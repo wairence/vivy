@@ -1,0 +1,462 @@
+import { decodeHits, Hit } from "./rhythm";
+import { findMoments, Moment } from "./track-structure";
+
+export type CurvePoint = { t: number; y: number };
+export type { Moment };
+
+export type Bar = { start: number; duration: number; confidence: number };
+export type Section = {
+	start: number;
+	duration: number;
+	confidence: number;
+	loudness: number;
+	// each section carries its OWN tempo and metre - a track is not obliged to keep either
+	tempo: number;
+	time_signature: number;
+	key: number;
+	mode: number;
+};
+
+export type TrackAudioData = {
+	beats: SpotifyAudioAnalysis["beats"];
+	segments: SpotifyAudioAnalysis["segments"];
+	loudnessCurve: CurvePoint[];
+	tempo: number;
+	// the metrical grid: which beats start a bar. Empty when the track has none
+	bars: Bar[];
+	// the track's own structure, with each section's loudness in dB. This is what makes anticipating
+	// a chorus possible at all - it is the only part of the analysis that describes the FUTURE
+	sections: Section[];
+	// each section's loudness as a rank within this track, 0..1, aligned with `sections`. This is
+	// what "how big is this part of the song" means in practice - see sectionRanks above
+	sectionIntensity: number[];
+	// the track's big moments and what the music does on the way into each - see track-structure.ts
+	moments: Moment[];
+	// the sub-beat grid, roughly two to four per beat. Carried but not yet used by anything - see
+	// docs/MEASUREMENTS.md
+	tatums: Bar[];
+	// the audio's own onsets, from `rhythmstring` - see rhythm.ts. Empty when the track has no
+	// rhythmstring (8 of 89 dumps) or the platform cannot inflate it, and `strike` falls back to
+	// the segment-based detector then
+	hits: Hit[];
+	// this track's own 5th and 95th percentile of timbre[1] - "how bright/ringing did that sound",
+	// which is the only per-event scale we have with a usable spread. Raw it runs about -34..99 and
+	// sits differently on every track, so like `hitScale` it is normalised per track or a dull one
+	// would spend the whole song against one edge. Measured across 26k events: consecutive hits
+	// differ by 19% of the range at the median, and any ten seconds covers 68% of it.
+	// every segment's timbre[1], sorted. A mark's place on the axis is its RANK here, not its value:
+	// the raw numbers are bell-shaped, so a linear stretch left the marks bunched in the middle and
+	// the axis was used to about a third of its width. A rank spreads them evenly by construction.
+	timbreSorted: number[];
+	// the analysis's own track-level summary, verbatim and untyped. What this object actually
+	// contains from the internal endpoint has never been checked, only assumed from the public Web
+	// API's documentation, so it is dumped as-is rather than picked apart here
+	trackInfo: Record<string, unknown>;
+	// The amplitude a single hit is measured against: this track's own 98th-percentile segment.
+	// Everything that asks "was that a big hit?" divides by this. It used to be a fixed x1.8 against
+	// Spotify's absolute scale, clamped to 1 - and on any modern master most of a chorus is past
+	// that clamp, so every hit in it measured as exactly 1.0. The star's rarity is built on beating
+	// the loudest hit of the last few seconds, which nothing can do when they are all equal, so it
+	// fired on essentially every beat: a star every 1.3s on the busiest track measured. Same ceiling
+	// as DESIGN-RULES §3b, in a comparison rather than in a colour.
+	hitScale: number;
+};
+
+
+
+const toAmplitude = (db: number) => Math.pow(10, db / 20);
+
+// Where a track's own quiet and loud ends are mapped to. Every preset was tuned against Spotify's
+// absolute amplitude scale, where a quiet passage reads about 0.06 and a big one about 0.6 - so
+// those are the targets, and each track is stretched onto them individually.
+const ENERGY_QUIET = 0.06;
+const ENERGY_LOUD = 0.62;
+
+// A track mastered at -13dB used to sit at 0.22 for its entire length and render as a permanent
+// interlude: dim, slow, nothing happening. Loudness is a property of the MASTERING, not of the
+// music, so the curve is normalised onto the track's own 5th and 95th percentiles. Percentiles
+// rather than min and max because a single silent outro would otherwise define the whole scale.
+// Exported, because every harness that builds a curve of its own has to apply the same stretch as
+// the client or it is looking at a different picture. Both of them had drifted: `music-lab.js`
+// stretched onto 0.12..0.85, and the preview harness did not normalise at all - so the tool the
+// project uses to LOOK at a preset was showing it at the bottom of its own dynamic range, dark and
+// slow, on every preset at once.
+export function normaliseCurve(curve: CurvePoint[]) {
+	const sorted = curve.map(p => p.y).filter(y => Number.isFinite(y)).sort((a, b) => a - b);
+	if (sorted.length < 8) return;
+	const at = (q: number) => sorted[Math.floor((sorted.length - 1) * q)];
+	const lo = at(0.05);
+	const hi = at(0.95);
+	if (hi - lo < 1e-4) return;
+	const scale = (ENERGY_LOUD - ENERGY_QUIET) / (hi - lo);
+	// Blended with the untouched value rather than replacing it. Full normalisation gives every
+	// track the same dynamic range, which is right for making a chorus register on a compressed
+	// master - and wrong in the other direction, because it also makes a quiet, gentle song move
+	// like a loud one. It stopped sounding like the song. Most of the weight is on the track's own
+	// dynamics; the remainder keeps a quiet track quieter than a loud one.
+	for (const point of curve) {
+		const stretched = ENERGY_QUIET + (point.y - lo) * scale;
+		point.y = Math.max(0, Math.min(1, stretched * 0.7 + point.y * 0.3));
+	}
+}
+
+// "how ringing was that sound" for every segment, sorted, so a value can be turned into its rank
+function sortedTimbre(segments: SpotifyAudioAnalysis["segments"]): number[] {
+	return segments
+		.map(s => s.timbre[1])
+		.filter(v => Number.isFinite(v))
+		.sort((a, b) => a - b);
+}
+
+// where a value sits within that, 0..1
+export function rankOf(sorted: number[] | undefined, value: number): number {
+	if (!sorted || sorted.length < 16 || !Number.isFinite(value)) return 0.5;
+	let lo = 0;
+	let hi = sorted.length - 1;
+	if (value <= sorted[0]) return 0;
+	if (value >= sorted[hi]) return 1;
+	while (hi - lo > 1) {
+		const mid = (lo + hi) >> 1;
+		if (sorted[mid] <= value) lo = mid;
+		else hi = mid;
+	}
+	return lo / (sorted.length - 1);
+}
+
+// The 98th percentile rather than the maximum: one clipped transient must not define the scale for
+// the whole track, and the point of the number is "what does a big hit sound like HERE".
+function hitScaleOf(segments: SpotifyAudioAnalysis["segments"]): number {
+	const sorted = segments
+		.map(s => toAmplitude(s.loudness_max))
+		.filter(y => Number.isFinite(y))
+		.sort((a, b) => a - b);
+	if (sorted.length < 8) return 0.56;
+	return Math.max(0.02, sorted[Math.floor((sorted.length - 1) * 0.98)]);
+}
+
+// Each section's loudness as its RANK within the track, 0..1. Rank rather than decibels because a
+// modern master compresses a chorus to about a decibel over a verse while an older one spans ten -
+// the same musical event, two unrelated numbers. Rank is immune to that and to outliers.
+function sectionRanks(sections: Section[]): number[] {
+	if (sections.length === 0) return [];
+	if (sections.length === 1) return [0.5];
+	const order = sections.map((s, i) => ({ i, loudness: s.loudness })).sort((a, b) => a.loudness - b.loudness);
+	const ranks = new Array<number>(sections.length).fill(0);
+	order.forEach((entry, position) => (ranks[entry.i] = position / (order.length - 1)));
+	return ranks;
+}
+
+// continuous loudness curve from segments (dB -> linear amplitude), so visuals have a
+// sense of the track's energy between beats, not just the beat attack itself
+function buildLoudnessCurve(segments: SpotifyAudioAnalysis["segments"]): CurvePoint[] {
+	const curve: CurvePoint[] = [];
+
+	for (const segment of segments) {
+		curve.push({ t: segment.start, y: toAmplitude(segment.loudness_start) });
+		if (segment.loudness_max_time > 0)
+			curve.push({ t: segment.start + segment.loudness_max_time, y: toAmplitude(segment.loudness_max) });
+	}
+	const last = segments[segments.length - 1];
+	if (last) curve.push({ t: last.start + last.duration, y: toAmplitude(last.loudness_end) });
+
+	return curve;
+}
+
+export function sampleCurve(curve: CurvePoint[], t: number): number {
+	if (curve.length === 0) return 0;
+	if (t <= curve[0].t) return curve[0].y;
+	if (t >= curve[curve.length - 1].t) return curve[curve.length - 1].y;
+
+	let lo = 0;
+	let hi = curve.length - 1;
+	while (hi - lo > 1) {
+		const mid = Math.floor((lo + hi) / 2);
+		if (curve[mid].t <= t) lo = mid;
+		else hi = mid;
+	}
+
+	const a = curve[lo];
+	const b = curve[hi];
+	return a.y + ((t - a.t) / (b.t - a.t)) * (b.y - a.y);
+}
+
+// time (seconds) since the most recent beat at or before `t`, or null if there is no such beat
+export function timeSinceLastBeat(beats: SpotifyAudioAnalysis["beats"], t: number): number | null {
+	let lo = 0;
+	let hi = beats.length - 1;
+	if (hi < 0 || beats[0].start > t) return null;
+
+	while (lo < hi) {
+		const mid = Math.ceil((lo + hi) / 2);
+		if (beats[mid].start <= t) lo = mid;
+		else hi = mid - 1;
+	}
+
+	return t - beats[lo].start;
+}
+
+// the last entry starting at or before `t`, or null. Same binary search as segmentAt/beats, over
+// anything with a `start` - bars and sections both need it
+function spanAt<T extends { start: number; duration: number }>(spans: T[], t: number): T | null {
+	let lo = 0;
+	let hi = spans.length - 1;
+	if (hi < 0 || spans[0].start > t) return null;
+	while (lo < hi) {
+		const mid = Math.ceil((lo + hi) / 2);
+		if (spans[mid].start <= t) lo = mid;
+		else hi = mid - 1;
+	}
+	return spans[lo];
+}
+
+export function barAt(bars: Bar[], t: number): Bar | null {
+	return spanAt(bars, t);
+}
+
+// How far `t` is from the nearest bar BOUNDARY, and how sure the tracker was about that bar.
+// Nearest, not "the bar containing t": the beat grid and the bar grid are estimated separately and
+// a beat that starts a bar can land a few milliseconds on either side of it. Asking only about the
+// bar that began before `t` marks such a beat as being most of a bar late, so real downbeats were
+// being classified as weak whenever they happened to land early.
+export function nearestBarStart(bars: Bar[], t: number): { distance: number; confidence: number } | null {
+	if (bars.length === 0) return null;
+	let lo = 0;
+	let hi = bars.length - 1;
+	while (lo < hi) {
+		const mid = Math.ceil((lo + hi) / 2);
+		if (bars[mid].start <= t) lo = mid;
+		else hi = mid - 1;
+	}
+	let best = bars[lo];
+	let distance = Math.abs(t - best.start);
+	for (const candidate of [bars[lo + 1], bars[lo - 1]]) {
+		if (!candidate) continue;
+		const d = Math.abs(t - candidate.start);
+		if (d < distance) {
+			distance = d;
+			best = candidate;
+		}
+	}
+	return { distance, confidence: Math.max(0, Math.min(1, best.confidence)) };
+}
+
+// the current section plus the ones after it, so a preset can see what is coming
+export function sectionIndexAt(sections: Section[], t: number): number {
+	if (sections.length === 0 || sections[0].start > t) return -1;
+	let lo = 0;
+	let hi = sections.length - 1;
+	while (lo < hi) {
+		const mid = Math.ceil((lo + hi) / 2);
+		if (sections[mid].start <= t) lo = mid;
+		else hi = mid - 1;
+	}
+	return lo;
+}
+
+// the segment covering time `t`, or null before the first segment
+export function segmentAt(segments: SpotifyAudioAnalysis["segments"], t: number): SpotifyAudioAnalysis["segments"][number] | null {
+	let lo = 0;
+	let hi = segments.length - 1;
+	if (hi < 0 || segments[0].start > t) return null;
+
+	while (lo < hi) {
+		const mid = Math.ceil((lo + hi) / 2);
+		if (segments[mid].start <= t) lo = mid;
+		else hi = mid - 1;
+	}
+
+	return segments[lo];
+}
+
+// The analysis endpoint, fetched OURSELVES rather than through `Spicetify.getAudioData`.
+//
+// Why this exists, as of 2026-09-17: spicetify's wrapper picks how to make the request from the
+// client's version string, and the test is
+//
+//     const a = Spicetify.Platform.version.split(".").map(Number);
+//     return a[1] >= 2 && a[2] < 31 ? nativeCosmos : fetchWithAuthHeaders;
+//
+// which reads "1.2.30 and below use the internal cosmos, 1.2.31 and above use a real fetch with the
+// authorization headers". On Spotify **1.3.0** that test says `3 >= 2 && 0 < 31` - true - so the
+// wrapper falls back to the legacy path that the fetch shim was written to replace, on every
+// request, for every track. The version comparison only ever understood 1.2.x.
+//
+// So we do what the shim does, and stop depending on which branch a third party's version check
+// happens to take: the same URL, the same three headers, and the same treatment of a non-OK
+// response. `Spicetify.getAudioData` is still tried first, because when it works it is the
+// supported path and it will keep working when this is fixed upstream.
+type CosmosFailure = { code?: number; error?: string; message?: string };
+
+const looksLikeAnalysis = (x: unknown): x is SpotifyAudioAnalysis =>
+	!!x && Array.isArray((x as SpotifyAudioAnalysis).segments);
+
+const describeFailure = (x: unknown): string => {
+	const f = x as CosmosFailure;
+	const detail = [f?.code, f?.error, f?.message].filter(Boolean).join(" ");
+	return detail || "the response had no segments";
+};
+
+async function fetchAnalysisDirectly(uri: string): Promise<unknown> {
+	const id = uri.split(":").pop();
+	if (!id) throw new Error("no track id in " + uri);
+	const platform = (Spicetify as unknown as {
+		Platform?: {
+			version?: string;
+			PlatformData?: { app_platform?: string };
+			AuthorizationAPI?: { getState: () => { token?: { accessToken?: string } } };
+		};
+	}).Platform;
+	const token = platform?.AuthorizationAPI?.getState()?.token?.accessToken;
+	if (!token) throw new Error("no access token available");
+	const response = await fetch(`https://spclient.wg.spotify.com/audio-attributes/v1/audio-analysis/${id}?format=json`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+			"Spotify-App-Version": platform?.version ?? "",
+			"App-Platform": platform?.PlatformData?.app_platform ?? ""
+		}
+	});
+	if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+	return await response.json();
+}
+
+export async function loadTrackAudioData(uri: string): Promise<TrackAudioData> {
+	let analysis: SpotifyAudioAnalysis;
+	let viaWrapper: unknown = null;
+	try {
+		viaWrapper = await Spicetify.getAudioData(uri);
+	} catch (err) {
+		viaWrapper = { message: String((err as Error)?.message ?? err) };
+	}
+	if (looksLikeAnalysis(viaWrapper)) {
+		analysis = viaWrapper;
+	} else {
+		// what the wrapper said, kept so the notification can name both failures rather than the
+		// second one only
+		const wrapperSaid = describeFailure(viaWrapper);
+		let direct: unknown;
+		try {
+			direct = await fetchAnalysisDirectly(uri);
+		} catch (err) {
+			throw new Error(`${wrapperSaid}; direct: ${String((err as Error)?.message ?? err)}`);
+		}
+		if (!looksLikeAnalysis(direct)) throw new Error(`${wrapperSaid}; direct: ${describeFailure(direct)}`);
+		analysis = direct;
+	}
+
+	// Both paths above resolve with an ERROR OBJECT rather than rejecting - `{ code, error, message }`
+	// is what the wrapper returns for a non-OK response - so the shape is checked before anything
+	// reads it. It used to be checked three lines below `buildLoudnessCurve(analysis.segments)`,
+	// which iterates exactly the thing being checked for, so the message was always "segments is
+	// not iterable" and the real reason never reached anybody. A guard after the use is not a guard.
+	const sections: Section[] = Array.isArray(analysis.sections) ? analysis.sections : [];
+	const curve = buildLoudnessCurve(analysis.segments);
+	normaliseCurve(curve);
+
+	return {
+		beats: analysis.beats,
+		segments: analysis.segments,
+		loudnessCurve: curve,
+		tempo: analysis.track.tempo,
+		bars: Array.isArray(analysis.bars) ? analysis.bars : [],
+		sections,
+		sectionIntensity: sectionRanks(sections),
+		moments: findMoments(analysis.segments, Array.isArray(analysis.bars) ? analysis.bars : [], curve),
+		hitScale: hitScaleOf(analysis.segments),
+		tatums: Array.isArray(analysis.tatums) ? analysis.tatums : [],
+		hits: await decodeHits((analysis.track as unknown as { rhythmstring?: unknown })?.rhythmstring),
+		timbreSorted: sortedTimbre(analysis.segments),
+		trackInfo: (analysis.track ?? {}) as unknown as Record<string, unknown>
+	};
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fallback for tracks the analysis has nothing for.
+//
+// `getAudioData` hits an internal client endpoint - audio-attributes/v1/audio-analysis/{id} - and
+// some tracks genuinely 404 there. Its sibling on the same path, audio-features, still answers for
+// them: one summary row per track, with Spotify's own measured tempo, loudness and key. (The public
+// Web API equivalent is closed to applications and returns a flat 429; this internal one does not.)
+//
+// That is enough for a real pulse and nothing more. There are no segments, so no attack character,
+// no harmonic movement and no verse-versus-chorus dynamics - `loudnessCurve` is flat at the track's
+// measured loudness, and it is left flat on purpose. Inventing an envelope to fill the gap would be
+// exactly the kind of made-up heuristic DESIGN-RULES §8 exists to prevent: better a picture that
+// pulses honestly at the right tempo than one that pretends to hear a structure it cannot.
+
+export type TrackAudioFeatures = {
+	tempo: number;
+	duration_ms: number;
+	loudness: number;
+	energy: number;
+	key: number;
+	mode: number;
+	time_signature: number;
+};
+
+export async function loadTrackAudioFeatures(uri: string): Promise<TrackAudioFeatures> {
+	const id = uri.split(":").pop();
+	const url = `https://spclient.wg.spotify.com/audio-attributes/v1/audio-features/${id}?format=json`;
+	// the same two paths, in the same order, for the same reason as the analysis above: this is the
+	// LAST fallback, and it went through `Spicetify.CosmosAsync` - which is the very thing the
+	// version check breaks on Spotify 1.3. A fallback that fails for the same reason as the thing it
+	// is falling back from is not a fallback at all, which is exactly what "no audio data AT ALL for
+	// any track" looked like from outside.
+	let body: unknown = null;
+	try {
+		body = await Spicetify.CosmosAsync.get(url);
+	} catch {
+		body = null;
+	}
+	const ok = (x: unknown): x is TrackAudioFeatures => !!x && typeof (x as TrackAudioFeatures).tempo === "number" && (x as TrackAudioFeatures).tempo > 0;
+	if (ok(body)) return body;
+	const platform = (Spicetify as unknown as {
+		Platform?: {
+			version?: string;
+			PlatformData?: { app_platform?: string };
+			AuthorizationAPI?: { getState: () => { token?: { accessToken?: string } } };
+		};
+	}).Platform;
+	const token = platform?.AuthorizationAPI?.getState()?.token?.accessToken;
+	if (!token) throw new Error(`no audio features (${describeFailure(body)}; no access token)`);
+	const response = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+			"Spotify-App-Version": platform?.version ?? "",
+			"App-Platform": platform?.PlatformData?.app_platform ?? ""
+		}
+	});
+	if (!response.ok) throw new Error(`no audio features (${describeFailure(body)}; direct: ${response.status} ${response.statusText})`);
+	const direct = (await response.json()) as unknown;
+	if (!ok(direct)) throw new Error(`no audio features (${describeFailure(direct)})`);
+	return direct;
+}
+
+export function trackDataFromFeatures(features: TrackAudioFeatures): TrackAudioData {
+	// no length given: ten minutes of pulse rather than one second of it
+	const duration = features.duration_ms ? Math.max(1, features.duration_ms / 1000) : 600;
+	const beatDuration = 60 / features.tempo;
+	const beats: TrackAudioData["beats"] = [];
+	// generated from Spotify's own measured tempo, so the pulse is the track's real one; there is no
+	// phase information anywhere in the features, so it starts at zero and drifts against the mix
+	for (let t = 0; t < duration; t += beatDuration) beats.push({ start: t, duration: beatDuration, confidence: 0.6 });
+
+	const amplitude = toAmplitude(Math.max(-40, Math.min(0, features.loudness)));
+	return {
+		beats,
+		segments: [],
+		loudnessCurve: [
+			{ t: 0, y: amplitude },
+			{ t: duration, y: amplitude }
+		],
+		tempo: features.tempo,
+		bars: [],
+		sections: [],
+		sectionIntensity: [],
+		moments: [],
+		hitScale: amplitude,
+		tatums: [],
+		hits: [],
+		timbreSorted: [],
+		trackInfo: {}
+	};
+}

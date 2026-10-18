@@ -1,0 +1,24 @@
+# A tag like v0.1.1 builds the release bundle and publishes it as vivy.zip on that tag's release.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm run check
+      - run: npm run release
+      # unzipped into CustomApps it must be a folder called vivy
+      - run: mkdir -p out/vivy && cp dist/index.js dist/manifest.json dist/style.css out/vivy/ && cd out && zip -r ../vivy.zip vivy
+      - run: gh release create "$GITHUB_REF_NAME" vivy.zip --title "vivy $GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

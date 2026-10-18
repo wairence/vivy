@@ -1,0 +1,115 @@
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+
+const types = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json" };
+// A DEV server: it answers this machine only, serves files from this folder only, and takes bodies of
+// at most this size - a POST from any page in a browser reaches it, so none of that is optional
+const ROOT = path.resolve(__dirname);
+const MAX_BODY = 20 * 1024 * 1024;
+const inRoot = file => file === ROOT || file.startsWith(ROOT + path.sep);
+const collect = (req, res, done) => {
+	let body = "";
+	req.on("data", c => {
+		body += c;
+		if (body.length > MAX_BODY) {
+			res.writeHead(413);
+			res.end();
+			req.destroy();
+		}
+	});
+	req.on("end", () => {
+		if (body.length <= MAX_BODY) done(body);
+	});
+};
+
+http
+	.createServer((req, res) => {
+		// A diagnostic running inside the Spotify client cannot be read from outside it - its console
+		// and its notifications live in that window. This lets a probe post what it found somewhere
+		// readable instead of asking a human to transcribe a console line.
+		// the last track's real analysis, so the structure detector can be developed against music
+		// instead of against synthetic data invented to match its own assumptions
+		if (req.method === "POST" && req.url === "/dump") {
+			collect(req, res, body => {
+				// one file per track. A single shared file was overwritten the moment Spotify advanced
+				// to the next song, which silently pointed a lab run at a different track's analysis
+				let name = "unknown";
+				try { name = String(JSON.parse(body).name || "unknown"); } catch { /* keep the default */ }
+				const safe = name.replace(/[^\wЀ-ӿ　-鿿 -]/g, "").trim().slice(0, 60) || "unknown";
+				const dir = path.join(__dirname, "analysis-dumps");
+				fs.mkdirSync(dir, { recursive: true });
+				fs.writeFileSync(path.join(dir, safe + ".json"), body);
+				res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
+				res.end("ok");
+			});
+			return;
+		}
+		// "this looks wrong, right now" - one line per press, appended. See app.tsx: the point is a
+		// dataset of real failures instead of a description of a picture nobody has seen yet.
+		if (req.method === "POST" && req.url === "/mark") {
+			collect(req, res, body => {
+				fs.appendFileSync(path.join(__dirname, "marks.jsonl"), `${body}
+`);
+				res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
+				res.end("ok");
+				try {
+					const m = JSON.parse(body);
+					console.log(`  marked  ${m.track} @ ${Number(m.at).toFixed(1)}s  preset ${m.preset} variant ${m.variant}`);
+				} catch {
+					console.log("  marked (unparsed)");
+				}
+			});
+			return;
+		}
+		if (req.method === "POST" && req.url === "/log") {
+			collect(req, res, body => {
+				fs.appendFileSync(path.join(__dirname, "probe-log.json"), `${new Date().toISOString()} ${body}
+`);
+				res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
+				res.end("ok");
+			});
+			return;
+		}
+		if (req.method === "OPTIONS") {
+			res.writeHead(204, {
+				"Access-Control-Allow-Origin": "*",
+				"Access-Control-Allow-Methods": "POST",
+				"Access-Control-Allow-Headers": "content-type"
+			});
+			res.end();
+			return;
+		}
+		if (req.method === "POST" && req.url.startsWith("/save/")) {
+			// a file name, never a path
+			const name = req.url.replace("/save/", "").replace(/[^\w.-]/g, "").replace(/^\.+/, "").slice(0, 80) || "shot";
+			collect(req, res, body => {
+				const b64 = body.replace(/^data:image\/png;base64,/, "");
+				fs.writeFileSync(path.join(__dirname, "shots", name + ".png"), Buffer.from(b64, "base64"));
+				res.writeHead(200);
+				res.end("ok");
+			});
+			return;
+		}
+		let file;
+		try {
+			file = path.resolve(ROOT, "." + decodeURIComponent(req.url.split("?")[0]));
+		} catch {
+			file = "";
+		}
+		if (!file || !inRoot(file)) {
+			res.writeHead(403);
+			res.end();
+			return;
+		}
+		fs.readFile(file, (err, data) => {
+			if (err) {
+				res.writeHead(404);
+				res.end();
+				return;
+			}
+			res.writeHead(200, { "Content-Type": types[path.extname(file)] || "text/plain" });
+			res.end(data);
+		});
+	})
+	.listen(8790, "127.0.0.1", () => console.log("serving on http://localhost:8790"));

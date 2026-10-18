@@ -1,0 +1,8 @@
+{
+	"name": "vivy",
+	"description": "Music visualizer for Spotify, driven by the track's audio analysis.",
+	"preview": "branding/screens/ridgeline.png",
+	"readme": "README.md",
+	"authors": [{ "name": "wairence", "url": "https://github.com/wairence" }],
+	"tags": ["visualizer", "music", "audio", "webgl"]
+}

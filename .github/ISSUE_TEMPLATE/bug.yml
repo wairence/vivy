@@ -1,0 +1,31 @@
+name: Bug
+description: Something is broken or looks wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. A screenshot or a short video helps a lot.
+    validations:
+      required: true
+  - type: dropdown
+    id: preset
+    attributes:
+      label: Preset
+      options: [Ridgeline, Drift, Both, Not preset-specific]
+    validations:
+      required: true
+  - type: input
+    id: track
+    attributes:
+      label: Track
+      description: Which song, and roughly where in it (e.g. "Daten, around 2:20"). Some bugs only happen on some tracks.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Your OS, Spotify version, Spicetify version (`spicetify -v`), and vivy version.
+      placeholder: Windows 11, Spotify 1.2.xx, Spicetify 2.45.1, vivy 0.1.0
+    validations:
+      required: true

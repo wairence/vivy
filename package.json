@@ -1,0 +1,34 @@
+{
+  "name": "vivy",
+  "version": "0.1.0",
+  "private": true,
+  "repository": "github:wairence/vivy",
+  "scripts": {
+    "build": "npm run stamp && spicetify-creator",
+    "watch": "spicetify-creator --watch",
+    "build-local": "spicetify-creator --out=dist --minify",
+    "release": "node stamp.js --release && spicetify-creator --out=dist --minify && node release-notice.js && node stamp.js",
+    "typecheck": "tsc --noEmit",
+    "check": "node check-presets.js",
+    "measure": "node measure-motion.js",
+    "structure": "node structure-lab.js",
+    "rhythm": "node rhythm-lab.js",
+    "compression": "node compression-lab.js",
+    "preview:build": "esbuild preview-harness.ts --bundle --outfile=preview-harness.bundle.js --format=iife --target=chrome110",
+    "preview": "npm run preview:build && node perf-serve.js",
+    "live:build": "esbuild live-app.ts --bundle --outfile=live-app.bundle.js --format=iife --target=chrome110",
+    "live": "npm run live:build && node perf-serve.js",
+    "stamp": "node stamp.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "esbuild": "^0.14.54",
+    "spicetify-creator": "^1.0.17",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "simplex-noise": "^4.0.3"
+  }
+}

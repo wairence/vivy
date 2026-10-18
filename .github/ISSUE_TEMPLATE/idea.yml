@@ -1,0 +1,11 @@
+name: Idea
+description: Something vivy could do or look like
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What you'd like to see. A reference (another visualizer, a video, a picture) is worth a lot.
+    validations:
+      required: true

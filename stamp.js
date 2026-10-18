@@ -1,0 +1,15 @@
+// Writes the build time into src/build-stamp.ts so the running client can say which bundle it is.
+// `spicetify apply` writes index.js to disk; the client reads it once, at startup. Without this
+// there is no way to tell a change that failed from a change that never loaded.
+// `--release` (npm run release) also switches the developer's tools off: the dev-server posts, the
+// marker key, the build and canvas toasts. Every other build is a dev build.
+const fs = require("fs");
+const release = process.argv.includes("--release");
+const stamp = new Date().toTimeString().slice(0, 8);
+fs.writeFileSync(
+	"src/build-stamp.ts",
+	"// Overwritten by `npm run build` (stamp.js). Committed with a placeholder so a fresh checkout compiles.\n" +
+		`export const BUILD = "${stamp}";\n` +
+		`export const DEV = ${!release};\n`
+);
+console.log(release ? "release build" : "dev build", stamp);
