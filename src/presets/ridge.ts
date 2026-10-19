@@ -117,6 +117,12 @@ const ECHO_MAX = 12;
 // how many specks of dust are in the air
 const DUST = 70;
 // live knobs (T in the client): every one starts at the constant above and is read each frame
+// THE GLOW ON THE HORIZON: how high it reaches above the far edge (of the picture's height), how far
+// to the sides (of its width), and how bright it is at its middle
+const SKY_HEIGHT = 0.18;
+const SKY_WIDTH = 0.9;
+const SKY_BRIGHT = 0.42;
+
 const K = tune("ridge", {
 	FUTURE_BEATS: [FUTURE_BEATS, 4, 40, "beats of the future on screen", "time"],
 	PAST_BEATS: [PAST_BEATS, 1, 8, "beats of the past"],
@@ -141,7 +147,10 @@ const K = tune("ridge", {
 	SMOOTH: [SMOOTH, 0, 8, "smoothing along the line"],
 	ECHO_BEATS: [ECHO_BEATS, 0.2, 6, "echo lasts, beats", "echo"],
 	ECHO_SWELL_SOFT: [ECHO_SWELL_SOFT, 0, 1, "swell of a soft sound"],
-	ECHO_SWELL_HARD: [ECHO_SWELL_HARD, 0, 3, "swell of a big hit"]
+	ECHO_SWELL_HARD: [ECHO_SWELL_HARD, 0, 3, "swell of a big hit"],
+	SKY_HEIGHT: [SKY_HEIGHT, 0.03, 0.6, "glow height", "horizon glow"],
+	SKY_WIDTH: [SKY_WIDTH, 0.2, 1.5, "glow width"],
+	SKY_BRIGHT: [SKY_BRIGHT, 0, 1, "glow brightness"]
 });
 
 
@@ -456,18 +465,24 @@ function create(): Preset {
 				if (strength > 0.01) {
 					const hue = base.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) : liveHue);
 					const sky = hslToRgb(hue + 0.04, base.s * 0.85, Math.min(0.7, base.l + 0.05));
-					const reach = width * 0.6;
-					// two half-ellipses that meet along the far edge, where both are at their brightest
-					for (const squash of [0.55, -0.16]) {
+					// A low wide band, not a disc: one gradient stretched far more across than up, so it lies along
+					// the horizon. Round, it read as a spot hanging in the sky. Above the far edge it rises SKY_HEIGHT,
+					// below it a third of that - the haze over the far plain - and both halves are brightest where
+					// they meet, along the edge. The falloff has no knee, so the band has no visible rim.
+					const across = width * K.SKY_WIDTH;
+					for (const up of [height * K.SKY_HEIGHT, -height * K.SKY_HEIGHT * 0.33]) {
 						ctx.save();
 						ctx.translate(midAt(zFar), yFar);
-						ctx.scale(1, squash);
-						const dawn = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
-						dawn.addColorStop(0, rgbString(sky, 0.42 * strength));
-						dawn.addColorStop(0.35, rgbString(sky, 0.16 * strength));
+						ctx.scale(across, up);
+						const dawn = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+						const a = K.SKY_BRIGHT * strength;
+						dawn.addColorStop(0, rgbString(sky, a));
+						dawn.addColorStop(0.2, rgbString(sky, a * 0.6));
+						dawn.addColorStop(0.45, rgbString(sky, a * 0.25));
+						dawn.addColorStop(0.7, rgbString(sky, a * 0.07));
 						dawn.addColorStop(1, rgbString(sky, 0));
 						ctx.fillStyle = dawn;
-						ctx.fillRect(-reach, -reach, reach * 2, reach);
+						ctx.fillRect(-1, -1, 2, 1);
 						ctx.restore();
 					}
 				}
