@@ -370,3 +370,178 @@
 .vivy-tune-none {
 	color: rgba(255, 255, 255, 0.5);
 }
+
+/* the colours, at the top of the knobs panel */
+.vivy-seg {
+	display: flex;
+	gap: 2px;
+	padding: 2px;
+	margin: 2px 0 8px;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.06);
+}
+
+.vivy-seg button {
+	flex: 1;
+	padding: 4px 0;
+	font: inherit;
+	color: rgba(255, 255, 255, 0.65);
+	background: transparent;
+	border: 0;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.vivy-seg button:hover {
+	color: #fff;
+}
+
+.vivy-seg button.on {
+	color: var(--vivy-accent);
+	background: var(--vivy-accent-tint);
+	box-shadow: inset 0 0 0 1px var(--vivy-accent-edge);
+}
+
+.vivy-tune-sub {
+	margin: 2px 0 2px;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.45);
+}
+
+.vivy-swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+	margin: 0 0 8px;
+}
+
+.vivy-swatch {
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	font: inherit;
+	font-size: 15px;
+	line-height: 1;
+	color: rgba(255, 255, 255, 0.6);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 7px;
+	cursor: pointer;
+	transition: transform 0.12s;
+}
+
+.vivy-swatch:hover {
+	transform: scale(1.08);
+}
+
+.vivy-swatch.on {
+	box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--vivy-accent);
+}
+
+.vivy-swatch.add {
+	background: transparent;
+	border-style: dashed;
+}
+
+.vivy-ramp {
+	flex-basis: 100%;
+	height: 6px;
+	border-radius: 3px;
+}
+
+/* the colour picker, beside the panel */
+.vivy-picker {
+	position: absolute;
+	z-index: 4;
+	width: 244px;
+	padding: 10px;
+	background: rgba(14, 16, 18, 0.95);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 12px;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+	animation: vivy-hint-in 0.14s ease-out;
+}
+
+.vivy-picker-square {
+	position: relative;
+	height: 140px;
+	border-radius: 8px;
+	background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
+	cursor: crosshair;
+	touch-action: none;
+}
+
+.vivy-picker-dot {
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	margin: -7px 0 0 -7px;
+	border: 2px solid #fff;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+	pointer-events: none;
+}
+
+.vivy-picker-strip {
+	position: relative;
+	height: 12px;
+	margin: 10px 0;
+	border-radius: 6px;
+	background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+	cursor: pointer;
+	touch-action: none;
+}
+
+.vivy-picker-handle {
+	position: absolute;
+	top: 50%;
+	width: 14px;
+	height: 14px;
+	margin: -7px 0 0 -7px;
+	border: 2px solid #fff;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+	pointer-events: none;
+}
+
+.vivy-picker-row {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.vivy-picker-chip {
+	flex: none;
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.vivy-picker-row input {
+	min-width: 0;
+	flex: 1;
+	padding: 4px 6px;
+	font: inherit;
+	font-family: ui-monospace, monospace;
+	color: #fff;
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 6px;
+	outline: none;
+}
+
+.vivy-picker-row input:focus {
+	border-color: var(--vivy-accent-edge);
+}
+
+.vivy-picker-row button {
+	flex: none;
+	padding: 4px 8px;
+	font: inherit;
+	color: inherit;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 999px;
+	cursor: pointer;
+}

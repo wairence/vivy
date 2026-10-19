@@ -20,6 +20,8 @@ const tunings = new Map<string, Tuning>();
 // bumped on every change, so a preset that caches what a knob shaped (a row, a table) knows to redo it
 let version = 0;
 export const tuneVersion = () => version;
+// something else a preset caches from changed (the colours)
+export const bumpTune = () => void version++;
 
 const load = (preset: string): Record<string, [number, number]> => {
 	try {

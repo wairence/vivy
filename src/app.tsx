@@ -3,7 +3,9 @@ import "./css/app.css";
 import { loadTrackAudioData, loadTrackAudioFeatures, nearestBarStart, trackDataFromFeatures, TrackAudioData } from "./audio-data";
 import { lastConducted } from "./presets/flowfield-common";
 import { AudioSync, createSmoothClock } from "./audio-sync";
-import { BUILD, DEV } from "./build-stamp";
+import { BUILD, DEV } from "./build-stamp";
+import { hexToRgb } from "./colours";
+import { ColourSection } from "./colour-panel";
 import { Preset, PresetFrame, PRESETS } from "./presets";
 import { Knob, movedText, resetKnobs, setKnob, tuningOf } from "./presets/tune";
 
@@ -158,6 +160,7 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 				<button onClick={() => (resetKnobs(presetId), refresh())}>Reset</button>
 				<button onClick={onClose}>{"×"}</button>
 			</div>
+			<ColourSection panel={panelRef} />
 			{!t || (t.knobs.length === 0 && t.features.length === 0) ? (
 				<div className="vivy-tune-none">This preset has no knobs yet.</div>
 			) : null}
@@ -225,8 +228,9 @@ export default function App() {
 
 	// audio/visual data is only read from the rAF loop, doesn't need to trigger a re-render
 	const audioDataRef = useRef<TrackAudioData | null>(null);
-	const targetColorRef = useRef(DEFAULT_RGB);
-	const displayColorRef = useRef(DEFAULT_RGB);
+	// the cover's palette, dark to light: what the new cover gives, and what is on screen on its way there
+	const targetColorRef = useRef([DEFAULT_RGB, DEFAULT_RGB, DEFAULT_RGB]);
+	const displayColorRef = useRef([DEFAULT_RGB, DEFAULT_RGB, DEFAULT_RGB]);
 	const mousePosRef = useRef({ x: 0, y: 0 });
 	const mouseClicksRef = useRef(0);
 	const mouseRightClicksRef = useRef(0);
@@ -428,17 +432,27 @@ export default function App() {
 			const next = (Spicetify.Queue?.nextTracks?.[0] as { contextTrack?: { uri?: unknown } } | undefined)?.contextTrack?.uri;
 			if (typeof next === "string" && next.startsWith("spotify:track:")) loadAnalysis(next).catch(() => {});
 
-			if (item.metadata.image_url) {
+			// THE COVER'S PALETTE: three colours Spotify extracts from the art, dark to light. Where that
+			// fails, the one light colour it gives for the cover, three times
+			const stillHere = () => Spicetify.Player.data?.item?.uri === item.uri;
+			const single = () => {
+				if (!item.metadata.image_url) return;
 				Spicetify.extractColorPreset(item.metadata.image_url)
 					.then(colors => {
-						if (Spicetify.Player.data?.item?.uri !== item.uri) return;
 						const rgb = colors[0]?.colorLight?.rgb;
-						if (rgb) targetColorRef.current = rgb;
+						if (rgb && stillHere()) targetColorRef.current = [rgb, rgb, rgb];
 					})
 					.catch(() => {
-						// keep the default color
+						// keep the last colours
 					});
-			}
+			};
+			Spicetify.colorExtractor(item.uri)
+				.then(c => {
+					const stops = [c.DARK_VIBRANT, c.VIBRANT, c.LIGHT_VIBRANT];
+					if (!stops.every(hex => /^#[0-9a-f]{6}$/i.test(hex ?? ""))) return single();
+					if (stillHere()) targetColorRef.current = stops.map(hexToRgb);
+				})
+				.catch(single);
 		};
 
 		const songChangeListener = (event?: Event & { data: Spicetify.PlayerState }) => updateTrack(event?.data);
@@ -622,17 +636,16 @@ export default function App() {
 		let lastColourAt = performance.now();
 		const render = () => {
 			const target = targetColorRef.current;
-			const display = displayColorRef.current;
 			// the palette comes round to a new cover over a couple of seconds - by the clock, not by the
 			// frame: `* 0.05` a frame was a quarter of a second on a 240 Hz screen and a whole one at 60
 			const wall = performance.now();
 			const colourStep = 1 - Math.exp(-Math.min(0.1, (wall - lastColourAt) / 1000) / 0.6);
 			lastColourAt = wall;
-			displayColorRef.current = {
-				r: display.r + (target.r - display.r) * colourStep,
-				g: display.g + (target.g - display.g) * colourStep,
-				b: display.b + (target.b - display.b) * colourStep
-			};
+			displayColorRef.current = displayColorRef.current.map((d, i) => ({
+				r: d.r + (target[i].r - d.r) * colourStep,
+				g: d.g + (target[i].g - d.g) * colourStep,
+				b: d.b + (target[i].b - d.b) * colourStep
+			}));
 
 			const mousePos = mousePosRef.current;
 			const rawSpeed = Math.hypot(mousePos.x - prevMouseX, mousePos.y - prevMouseY);
@@ -648,7 +661,8 @@ export default function App() {
 				progressSec: smoothClock(Spicetify.Player.getProgress() / 1000, isPlaying, performance.now() / 1000) - audioSync.getLatencySec(),
 				isPlaying,
 				audio: audioDataRef.current,
-				colorRgb: displayColorRef.current,
+				colorRgb: displayColorRef.current[1],
+				palette: displayColorRef.current,
 				mouse: {
 					x: mousePos.x,
 					y: mousePos.y,

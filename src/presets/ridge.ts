@@ -26,7 +26,8 @@
 // picture is redrawn every frame, so it may be glowed whole.
 import { createNoise2D } from "simplex-noise";
 import { createGlow, createKeyHue, keyHueAt } from "./effects";
-import { albumHsl, createConductor, hslToRgb } from "./flowfield-common";
+import { createConductor, hslToRgb } from "./flowfield-common";
+import { colours, palette, paletteAt } from "../colours";
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
@@ -242,7 +243,9 @@ function create(): Preset {
 	let pausedAt = "";
 	// how loud it has been lately, how loud the next stretch is, and how high the camera is: all eased
 	let lately = 0.3;
-	let ahead = 0.3;
+	let ahead = 0.3;
+	// where on the palette the music has the picture, when the colour follows the sound
+	let soundAt = 0.5;
 	let camera = 1;
 	// the dust: across (half-widths), above the ground (ridges), its place in the passing stretch (0..1), its own light
 	const dust = new Float32Array(DUST * 4);
@@ -474,9 +477,22 @@ function create(): Preset {
 			const sunkAt = (tau: number) => (tau >= 0 ? 1 : Math.exp(tau / (beat * 0.7)));
 
 			// ---- colour ------------------------------------------------------------------------------------
-			const base = albumHsl(colorRgb);
-			const liveHue = keyHue(shown, viewTime, c.dt);
-			const liveRgb = hslToRgb(base.h + liveHue + 0.14, Math.min(1, base.s + 0.08), Math.min(0.8, base.l + 0.16));
+			// The palette (the cover's, or the picked colours) and what moves a colour along it: a row's
+			// loudness, its depth, or the music's loudness right now (see colours.ts). Loudness is read
+			// against the band levels actually live in, measured over eight tracks (the camera's), not
+			// against 0..1, where most of the palette would never be reached.
+			const pal = palette(frame.palette ?? [colorRgb]);
+			const rel = (level: number) => smoothstep((level - K.LATELY_QUIET) / (K.LATELY_LOUD - K.LATELY_QUIET));
+			// its own envelope, slower than the line's: the colour follows the passage, not every hit
+			soundAt += (rel(c.energy) - soundAt) * Math.min(1, c.dt / 0.8);
+			const tint = (loud: number, near: number) =>
+				paletteAt(pal, colours.follows === "height" ? loud : colours.follows === "depth" ? near : soundAt);
+			// the cover's palette is turned a little off for the line and the section rows, so they stand
+			// out of the rows' own colour; picked colours are drawn as picked
+			const turn = colours.mode === "cover" ? 0.14 : 0;
+			const liveHue = keyHue(shown, viewTime, c.dt) * colours.harmony;
+			const lit = tint(rel(live[LEVEL]), 1);
+			const liveRgb = hslToRgb(lit.h + liveHue + turn, Math.min(1, lit.s + 0.08), Math.min(0.8, lit.l + 0.16));
 
 			ctx.fillStyle = "rgb(0, 0, 0)";
 			ctx.fillRect(0, 0, width, height);
@@ -494,8 +510,9 @@ function create(): Preset {
 			if (FEATURES.horizon.on) {
 				const strength = smoothstep((ahead - 0.1) / 0.45) * presence;
 				if (strength > 0.01) {
-					const hue = base.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) : liveHue);
-					const sky = hslToRgb(hue + 0.04, base.s * 0.85, Math.min(0.7, base.l + 0.05));
+					const far = tint(rel(ahead), 0);
+					const hue = far.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * colours.harmony : liveHue);
+					const sky = hslToRgb(hue + turn * 0.3, far.s * 0.85, Math.min(0.7, far.l + 0.05));
 					// A low wide band, not a disc: one gradient stretched far more across than up, so it lies along
 					// the horizon. Round, it read as a spot hanging in the sky. Above the far edge it rises SKY_HEIGHT,
 					// below it a third of that - the haze over the far plain - and both halves are brightest where
@@ -576,6 +593,7 @@ function create(): Preset {
 				// row's loudness is its lightness. The line is drawn a little darker when the peaks have
 				// their own colour, so a valley is dark and a peak is not.
 				const far = Math.max(0, Math.min(1, (z - K.Z_NOW) / (zFar - K.Z_NOW)));
+				const base = tint(rel(level), 1 - far);
 				const sat = base.s * 0.9 * (FEATURES.height.on ? 1 - far * 0.45 : 1);
 				const rgb = hslToRgb(base.h + hue, sat, base.l * (FEATURES.height.on ? 0.42 + level * 0.5 : 0.55 + level * 0.6));
 
@@ -632,7 +650,7 @@ function create(): Preset {
 			for (let i = 0; i < POINTS + 2; i++) live[i] += (target[i] - live[i]) * (isPlaying ? chase : 1);
 			// its body takes its place in the terrain; its LINE is drawn last of all, over everything - what
 			// has just been played is still standing in front of it, and the waveform is not to be hidden
-			const drawLive = () => row(live, K.Z_NOW, 1, 0, 1, liveHue + 0.14, live[LEVEL], 0.14 + c.energy * 0.3);
+			const drawLive = () => row(live, K.Z_NOW, 1, 0, 1, liveHue + turn, live[LEVEL], 0.14 + c.energy * 0.3);
 
 			// ---- a sound has just been played: the mountains as they stand now are its echo ---------------------
 			const segs = shown?.segments;
@@ -684,7 +702,7 @@ function create(): Preset {
 							gates.set(gate, data);
 						}
 						const sure = 0.35 + Math.min(1, sections[gate].confidence) * 0.65;
-						row(data, z, playedAt(z) * sunkAt(tau) * farAt(z), farAt(z) * playedAt(z) * 0.85 * sure, Math.max(1.2, (scale * 0.003 * K.Z_NOW) / z), data[HUE] + 0.14, 1, 0);
+						row(data, z, playedAt(z) * sunkAt(tau) * farAt(z), farAt(z) * playedAt(z) * 0.85 * sure, Math.max(1.2, (scale * 0.003 * K.Z_NOW) / z), data[HUE] * colours.harmony + turn, 1, 0);
 					}
 					gate--;
 				}
@@ -734,7 +752,7 @@ function create(): Preset {
 					playedAt(z) * sunkAt(tau) * farAt(z),
 					seen * (0.07 + level * 0.42 + weight * 0.3 + crossing * 0.3 + (bar ? 0.2 : 0)),
 					Math.max(1, (scale * (bar ? 0.0028 : 0.0012 + weight * 0.0012) * K.Z_NOW) / z),
-					FEATURES.grid.on ? data[HUE] : liveHue,
+					FEATURES.grid.on ? data[HUE] * colours.harmony : liveHue,
 					level,
 					near * (0.06 + c.energy * 0.22)
 				);

@@ -30,6 +30,8 @@ export type PresetFrame = {
 	isPlaying: boolean;
 	audio: TrackAudioData | null;
 	colorRgb: { r: number; g: number; b: number };
+	// the cover's palette, dark to light (colorRgb is its middle); absent in the test harnesses
+	palette?: { r: number; g: number; b: number }[];
 	mouse: MouseState;
 };
 

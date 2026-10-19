@@ -981,9 +981,7 @@ export function createBloomLayer() {
 
 export type Hsl = { h: number; s: number; l: number };
 
-// the extracted album colour as HSL, with saturation/lightness pulled into a usable band so a
-// near-grey or near-black cover doesn't collapse the hue-shifting variants into mud
-export function albumHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl {
+export function rgbToHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl {
 	const rn = r / 255;
 	const gn = g / 255;
 	const bn = b / 255;
@@ -991,7 +989,6 @@ export function albumHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl 
 	const min = Math.min(rn, gn, bn);
 	const d = max - min;
 	const l = (max + min) / 2;
-
 	let h = 0;
 	if (d > 1e-6) {
 		if (max === rn) h = ((gn - bn) / d) % 6;
@@ -999,11 +996,15 @@ export function albumHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl 
 		else h = (rn - gn) / d + 4;
 		h = (((h / 6) % 1) + 1) % 1;
 	}
-	const s = d < 1e-6 ? 0 : d / (1 - Math.abs(2 * l - 1));
-
-	return { h, s: Math.max(0.45, Math.min(0.95, s)), l: Math.max(0.45, Math.min(0.66, l)) };
+	return { h, s: d < 1e-6 ? 0 : d / (1 - Math.abs(2 * l - 1)), l };
 }
 
+// the extracted album colour as HSL, with saturation/lightness pulled into a usable band so a
+// near-grey or near-black cover doesn't collapse the hue-shifting variants into mud
+export function albumHsl(rgb: { r: number; g: number; b: number }): Hsl {
+	const { h, s, l } = rgbToHsl(rgb);
+	return { h, s: Math.max(0.45, Math.min(0.95, s)), l: Math.max(0.45, Math.min(0.66, l)) };
+}
 export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
 	const hue = (((h % 1) + 1) % 1) * 6;
 	const c = (1 - Math.abs(2 * l - 1)) * s;

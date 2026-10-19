@@ -19,7 +19,8 @@
 // 2D canvas cannot stroke at 144 Hz.
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
-import { albumHsl, createConductor, hslToRgb, publishDiagnostics } from "./flowfield-common";
+import { createConductor, hslToRgb, publishDiagnostics } from "./flowfield-common";
+import { colours, palette, paletteAt } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition } from "./types";
 import { tune } from "./tune";
@@ -530,6 +531,8 @@ function create(): Preset {
 	let cursor = 0;
 	let flash = 0;
 	const keyHue = createKeyHue();
+	// where on the palette the music has the picture, when the colour follows the sound
+	let soundAt = 0.5;
 	// where the camera is on its orbit
 	let orbit = 0;
 	let swayClock = 0;
@@ -662,12 +665,22 @@ function create(): Preset {
 			};
 
 			// ---- colour: one family of hues, leaned by this section's key against the track's home key ----
-			const base = albumHsl(colorRgb);
-			base.h += keyHue(audio, progressSec, c.dt);
+			// The three layers take three points along the palette (the cover's, or the picked colours):
+			// the haze its first colour, the hairlines the middle, the marks the last. With the colour
+			// following the sound, the whole family slides along it with the music.
+			const pal = palette(frame.palette ?? [colorRgb]);
+			soundAt += (Math.min(1, Math.max(0, c.energy)) - soundAt) * Math.min(1, c.dt / 0.8);
+			const along = (t: number) => paletteAt(pal, colours.follows === "sound" ? t * 0.5 + soundAt * 0.5 : t);
+			// the cover's palette is spread a little round the wheel between the layers; picked colours stay as picked
+			const turn = colours.mode === "cover" ? 1 : 0;
+			const key = keyHue(audio, progressSec, c.dt) * colours.harmony;
+			const g = along(0);
+			const sh = along(0.5);
+			const m = along(1);
 			const shimmer = shimmerPhase(fieldTime);
-			const groundRgb = shimmerTint(hslToRgb(base.h, base.s * 0.7, base.l * 0.62), shimmer, tintPulse * 0.4);
-			const sheetRgb = shimmerTint(hslToRgb(base.h + 0.06, base.s, base.l), shimmer, tintPulse);
-			const markRgb = shimmerTint(hslToRgb(base.h + 0.14, Math.min(1, base.s + 0.08), Math.min(0.78, base.l + 0.14)), shimmer, tintPulse);
+			const groundRgb = shimmerTint(hslToRgb(g.h + key, g.s * 0.7, g.l * 0.62), shimmer, tintPulse * 0.4);
+			const sheetRgb = shimmerTint(hslToRgb(sh.h + key + 0.06 * turn, sh.s, sh.l), shimmer, tintPulse);
+			const markRgb = shimmerTint(hslToRgb(m.h + key + 0.14 * turn, Math.min(1, m.s + 0.08), Math.min(0.78, m.l + 0.14)), shimmer, tintPulse);
 
 
 			// ---- the wake: what the marks cutting through the field do to a stroke at (x, y, z) -----------------
