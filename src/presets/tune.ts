@@ -10,7 +10,8 @@
 // it, the next frame reads it. A value moved off its default is kept across restarts - but only while
 // the code's default is still the one it was moved from, so a default changed in code wins.
 export type KnobSpec = readonly [def: number, min: number, max: number, label: string, group?: string];
-export type Knob = { key: string; def: number; min: number; max: number; label: string; group: string; hint: string };
+// `basic`: one of the few shown by default; the rest wait behind "More"
+export type Knob = { key: string; def: number; min: number; max: number; label: string; group: string; hint: string; basic: boolean };
 export type Feature = { name: string; on: boolean };
 export type Tuning = { knobs: Knob[]; values: Record<string, number>; features: Feature[] };
 
@@ -46,7 +47,8 @@ const save = (preset: string) => {
 export function tune<T extends Record<string, KnobSpec>>(
 	preset: string,
 	spec: T,
-	hints: { [K in keyof T]?: string } = {}
+	hints: { [K in keyof T]?: string } = {},
+	basic?: (keyof T & string)[]
 ): { [K in keyof T]: number } {
 	const saved = load(preset);
 	const values: Record<string, number> = {};
@@ -62,7 +64,7 @@ export function tune<T extends Record<string, KnobSpec>>(
 		// default happens to return to what it was
 		if (s !== undefined && !kept) stale = true;
 		values[key] = kept ? Math.min(max, Math.max(min, s[0])) : def;
-		knobs.push({ key, def, min, max, label, group, hint: hints[key] ?? "" });
+		knobs.push({ key, def, min, max, label, group, hint: hints[key] ?? "", basic: !basic || basic.includes(key) });
 	}
 	tunings.set(preset, { knobs, values, features: tunings.get(preset)?.features ?? [] });
 	if (stale) save(preset);

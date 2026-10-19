@@ -112,9 +112,23 @@ const ICON_PIP = (
 const ICON_EXPAND = <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />;
 const ICON_SHRINK = <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />;
 
-function IconButton({ label, icon, active, onClick }: { label: string; icon: React.ReactNode; active?: boolean; onClick: () => void }) {
+const ICON_COPY = (
+	<>
+		<rect x="8" y="8" width="12" height="12" rx="2" />
+		<path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+	</>
+);
+const ICON_RESET = (
+	<>
+		<path d="M4 12a8 8 0 1 0 2.4-5.7" />
+		<path d="M4 4v4.5h4.5" />
+	</>
+);
+const ICON_CLOSE = <path d="M6 6l12 12M18 6L6 18" />;
+
+function IconButton({ label, icon, active, small, onClick }: { label: string; icon: React.ReactNode; active?: boolean; small?: boolean; onClick: () => void }) {
 	return (
-		<button className={`vivy-icon${active ? " active" : ""}`} title={label} aria-label={label} aria-pressed={!!active} onClick={onClick}>
+		<button className={`vivy-icon${small ? " small" : ""}${active ? " active" : ""}`} title={label} aria-label={label} aria-pressed={!!active} onClick={onClick}>
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
 				{icon}
 			</svg>
@@ -131,6 +145,25 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 	// where the panel's scrolling would cut it off
 	const [hint, setHint] = useState<{ knob: Knob; top: number; right: number } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
+	// the few settings most people want, and the rest behind "More"; which one is open is remembered
+	const [more, setMore] = useState(() => {
+		try {
+			return localStorage.getItem("vivy:more") === "1";
+		} catch {
+			return false;
+		}
+	});
+	const toggleMore = () => {
+		setHint(null);
+		setMore(open => {
+			try {
+				localStorage.setItem("vivy:more", open ? "0" : "1");
+			} catch {
+				// storage denied: it opens closed next time
+			}
+			return !open;
+		});
+	};
 	const t = tuningOf(presetId);
 	const refresh = () => redraw(n => n + 1);
 	// a feature flipped with its number key shows here too (the preset's own listener runs first)
@@ -150,55 +183,73 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 		const p = parent.getBoundingClientRect();
 		setHint({ knob, top: row.getBoundingClientRect().top - p.top, right: p.right - panel.getBoundingClientRect().left + 10 });
 	};
-	let group = "";
+	// a run of knobs under their group names; each run starts its own headings
+	const knobs = (list: Knob[]) => {
+		let group = "";
+		return list.map(k => {
+			const value = t!.values[k.key];
+			const head = k.group !== group ? <div className="vivy-tune-group">{(group = k.group)}</div> : null;
+			return (
+				<React.Fragment key={k.key}>
+					{head}
+					<div
+						className={`vivy-tune-knob${value !== k.def ? " moved" : ""}`}
+						onMouseEnter={e => showHint(k, e.currentTarget)}
+						onMouseLeave={() => setHint(null)}
+						onFocus={e => showHint(k, e.currentTarget)}
+						onBlur={() => setHint(null)}
+					>
+						<div className="vivy-tune-label" onDoubleClick={() => (setKnob(presetId, k.key, k.def), refresh())}>
+							<span>{k.label}</span>
+							<span>{+value.toPrecision(3)}</span>
+						</div>
+						<input
+							type="range"
+							min={k.min}
+							max={k.max}
+							step={(k.max - k.min) / 400}
+							value={value}
+							onChange={e => (setKnob(presetId, k.key, Number(e.target.value)), refresh())}
+						/>
+					</div>
+				</React.Fragment>
+			);
+		});
+	};
 	return (
 		<>
 		<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => setHint(null)}>
 			<div className="vivy-tune-head">
 				<b>Knobs</b>
-				<button onClick={copy}>Copy</button>
-				<button onClick={() => (resetKnobs(presetId), refresh())}>Reset</button>
-				<button onClick={onClose}>{"×"}</button>
+				<IconButton small label="Copy moved values" icon={ICON_COPY} onClick={copy} />
+				<IconButton small label="Reset all to defaults" icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
+				<IconButton small label="Close (T)" icon={ICON_CLOSE} onClick={onClose} />
 			</div>
 			<ColourSection panel={panelRef} />
 			{!t || (t.knobs.length === 0 && t.features.length === 0) ? (
 				<div className="vivy-tune-none">This preset has no knobs yet.</div>
 			) : null}
-			{t?.features.map((f, i) => (
-				<label key={f.name} className="vivy-tune-feature">
-					<input type="checkbox" checked={f.on} onChange={() => ((f.on = !f.on), refresh())} />
-					{i + 1}. {f.name}
-				</label>
-			))}
-			{t?.knobs.map(k => {
-				const value = t.values[k.key];
-				const head = k.group !== group ? <div className="vivy-tune-group">{(group = k.group)}</div> : null;
-				return (
-					<React.Fragment key={k.key}>
-						{head}
-						<div
-							className={`vivy-tune-knob${value !== k.def ? " moved" : ""}`}
-							onMouseEnter={e => showHint(k, e.currentTarget)}
-							onMouseLeave={() => setHint(null)}
-							onFocus={e => showHint(k, e.currentTarget)}
-							onBlur={() => setHint(null)}
-						>
-							<div className="vivy-tune-label" onDoubleClick={() => (setKnob(presetId, k.key, k.def), refresh())}>
-								<span>{k.label}</span>
-								<span>{+value.toPrecision(3)}</span>
-							</div>
-							<input
-								type="range"
-								min={k.min}
-								max={k.max}
-								step={(k.max - k.min) / 400}
-								value={value}
-								onChange={e => (setKnob(presetId, k.key, Number(e.target.value)), refresh())}
-							/>
-						</div>
-					</React.Fragment>
-				);
-			})}
+			{t ? knobs(t.knobs.filter(k => k.basic)) : null}
+			{t && (t.features.length > 0 || t.knobs.some(k => !k.basic)) ? (
+				<button className={`vivy-more${more ? " on" : ""}`} aria-expanded={more} onClick={toggleMore}>
+					<span>{more ? "Fewer settings" : "More settings"}</span>
+					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<path d="M6 9l6 6 6-6" />
+					</svg>
+				</button>
+			) : null}
+			{t && more ? (
+				<>
+					{t.features.length > 0 ? <div className="vivy-tune-group">effects</div> : null}
+					{t.features.map((f, i) => (
+						<label key={f.name} className="vivy-tune-feature">
+							<input type="checkbox" checked={f.on} onChange={() => ((f.on = !f.on), refresh())} />
+							{i + 1}. {f.name}
+						</label>
+					))}
+					{knobs(t.knobs.filter(k => !k.basic))}
+				</>
+			) : null}
 		</div>
 		{hint ? (
 			<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
@@ -803,19 +854,28 @@ export default function App() {
 						},
 						{ passive: false }
 					);
-					const button = (label: string, right: number, hint: string, act: () => void) => {
+					// the same round icon buttons as the main view's, drawn as icons: a text "+" or "x" sits on
+					// the font's baseline, not in the middle of its circle
+					const button = (path: string, right: number, hint: string, act: () => void) => {
 						const b = doc.createElement("div");
-						b.textContent = label;
 						b.title = hint;
+						b.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="${path}"/></svg>`;
 						b.style.cssText =
-							`position:fixed;top:6px;right:${right}px;width:22px;height:22px;border-radius:11px;` +
-							"font:600 14px/22px system-ui,sans-serif;text-align:center;color:#fff;background:rgba(255,255,255,0.14);" +
-							"opacity:0;transition:opacity 0.4s ease;cursor:pointer;user-select:none;-webkit-app-region:no-drag;app-region:no-drag;z-index:2";
+							`position:fixed;top:8px;right:${right}px;width:28px;height:28px;box-sizing:border-box;border-radius:50%;` +
+							"display:grid;place-items:center;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.45);" +
+							"border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(12px);" +
+							"opacity:0;transition:opacity 0.4s ease,background 0.2s ease,color 0.2s ease;cursor:pointer;user-select:none;-webkit-app-region:no-drag;app-region:no-drag;z-index:2";
 						b.addEventListener("mouseenter", () => {
 							wake();
 							b.style.opacity = "1";
+							b.style.color = "#fff";
+							b.style.background = "rgba(255,255,255,0.16)";
 						});
-						b.addEventListener("mouseleave", wake);
+						b.addEventListener("mouseleave", () => {
+							b.style.color = "rgba(255,255,255,0.8)";
+							b.style.background = "rgba(0,0,0,0.45)";
+							wake();
+						});
 						b.addEventListener("click", act);
 						doc.body.append(b);
 						buttons.push(b);
@@ -834,9 +894,9 @@ export default function App() {
 					};
 					for (const sign of ["mousemove", "mousedown", "wheel", "keydown", "focus"]) opened.addEventListener(sign, wake, true);
 					doc.documentElement.addEventListener("mouseenter", wake);
-					button("\u00d7", 6, "Close (Esc)", () => opened.close());
-					button("+", 34, "Bigger (+ or wheel up)", () => scaleBy(1.25));
-					button("\u2212", 62, "Smaller (- or wheel down)", () => scaleBy(0.8));
+					button("M6 6l12 12M18 6L6 18", 8, "Close (Esc)", () => opened.close());
+					button("M12 5v14M5 12h14", 42, "Bigger (+ or wheel up)", () => scaleBy(1.25));
+					button("M5 12h14", 76, "Smaller (- or wheel down)", () => scaleBy(0.8));
 					wake();
 
 					// KEYS: its own, and everything else goes to the visualizer as if typed there

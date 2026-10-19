@@ -37,9 +37,6 @@ const FEATURES = {
 	horizon: { name: "horizon glow", on: true },
 	grid: { name: "bars and section gates", on: true },
 	height: { name: "colour by height", on: true },
-	// off: sharp, it read as more terrain upside down; blurred, the listener's word was that it was not
-	// what he wanted at all. Key 4 still switches it on
-	mirror: { name: "reflection", on: false },
 	lit: { name: "lit mountains", on: true },
 	camera: { name: "camera", on: true },
 	dust: { name: "dust", on: true },
@@ -120,9 +117,9 @@ const DUST = 70;
 // live knobs (T in the client): every one starts at the constant above and is read each frame
 // THE GLOW ON THE HORIZON: how high it reaches above the far edge (of the picture's height), how far
 // to the sides (of its width), and how bright it is at its middle
-const SKY_HEIGHT = 0.18;
-const SKY_WIDTH = 0.9;
-const SKY_BRIGHT = 0.42;
+const SKY_HEIGHT = 0.2252;
+const SKY_WIDTH = 1.146;
+const SKY_BRIGHT = 0.425;
 
 const K = tune("ridge", {
 	FUTURE_BEATS: [FUTURE_BEATS, 4, 40, "beats of the future on screen", "time"],
@@ -151,7 +148,11 @@ const K = tune("ridge", {
 	ECHO_SWELL_HARD: [ECHO_SWELL_HARD, 0, 3, "swell of a big hit"],
 	SKY_HEIGHT: [SKY_HEIGHT, 0.03, 0.6, "glow height", "horizon glow"],
 	SKY_WIDTH: [SKY_WIDTH, 0.2, 1.5, "glow width"],
-	SKY_BRIGHT: [SKY_BRIGHT, 0, 1, "glow brightness"]
+	SKY_BRIGHT: [SKY_BRIGHT, 0, 1, "glow brightness"],
+	GLOW: [1, 0, 2.5, "halo strength", "look"],
+	LINE: [1, 0.4, 3, "thickness of the bright line"],
+	DUST_LIGHT: [1, 0, 3, "dust brightness"],
+	SWAY: [1, 0, 3, "camera sway"]
 	},
 	// what each one does, shown beside the panel on hover
 	{
@@ -181,8 +182,14 @@ const K = tune("ridge", {
 		ECHO_SWELL_HARD: "How far the afterimage of a big hit lifts off the line as it fades. Higher makes hits throw a taller, wider echo.",
 		SKY_HEIGHT: "How high the glow on the horizon reaches. Higher makes a taller band of light above the far edge.",
 		SKY_WIDTH: "How far the horizon glow spreads sideways. Higher makes it stretch across the whole screen and beyond.",
-		SKY_BRIGHT: "How bright the horizon glow is at its centre. Zero turns it off."
-	}
+		SKY_BRIGHT: "How bright the horizon glow is at its centre. Zero turns it off.",
+		GLOW: "The soft halo around everything bright. Zero is a clean, sharp picture; higher is hazier and dreamier.",
+		LINE: "How thick the bright line of the current moment is.",
+		DUST_LIGHT: "How bright the specks flying past are. Zero hides them; higher makes a snowstorm of light on loud parts.",
+		SWAY: "How far the view drifts from side to side. Zero keeps it dead centre; higher swings it wider and the terrain bends with it."
+	},
+	// shown without "More"; the rest is for whoever wants to dig
+	["FUTURE_BEATS", "HORIZON", "RIDGE", "HALF_WIDTH", "SMOOTH", "ECHO_BEATS", "SKY_BRIGHT", "GLOW"]
 );
 
 
@@ -416,7 +423,7 @@ function create(): Preset {
 				presence += ((shown ? 1 : 0) - presence) * Math.min(1, 1.2 * c.dt);
 			}
 
-			// the other kind of grid was asked for (key 8): the same song, cut into rows differently
+			// the other kind of grid was asked for (key 7): the same song, cut into rows differently
 			// ...or a knob was turned: the rows already made were made with the old numbers
 			if (onAccents !== FEATURES.accents.on || rowTimes.length === 0 || tuned !== tuneVersion()) {
 				if (tuned !== tuneVersion()) setHills();
@@ -439,7 +446,7 @@ function create(): Preset {
 			if (shown) for (let k = 0; k < 8; k++) coming += sampleCurve(shown.loudnessCurve, viewTime + beat * (4 + (k * 12) / 7)) / 8;
 			ahead += (coming - ahead) * Math.min(1, 2 * c.dt);
 
-			// ---- 6. THE CAMERA --------------------------------------------------------------------------------
+			// ---- 5. THE CAMERA --------------------------------------------------------------------------------
 			// It rides high over a loud passage, looking down on the terrain spread out below it, and low
 			// over a quiet one; and it crouches when what is coming is louder than what has been, so a
 			// build is seen from under the wall it is building. Lower also means looking UP: the horizon
@@ -464,7 +471,7 @@ function create(): Preset {
 			const ridge = Math.min(height, (width * 9) / 16) * K.RIDGE;
 			const half = Math.min(width, (height * 16) / 9) * K.HALF_WIDTH;
 			// the camera drifts a little from side to side, which the depth answers with parallax
-			const sway = Math.sin(swayClock * 0.2) * width * (FEATURES.camera.on ? 0.085 : 0.05);
+			const sway = Math.sin(swayClock * 0.2) * width * (FEATURES.camera.on ? 0.085 : 0.05) * K.SWAY;
 			const midAt = (z: number) => cx + sway * (1 / z - 1 / K.Z_NOW);
 			const baseAt = (z: number) => hy + ground / z;
 			// Out of the fog at the horizon - and UP out of it: a row at the far edge is flat and has no
@@ -536,7 +543,7 @@ function create(): Preset {
 				}
 			}
 
-			// ---- 7. THE DUST ------------------------------------------------------------------------------------
+			// ---- 6. THE DUST ------------------------------------------------------------------------------------
 			// Specks in the air above the terrain, carried past at the terrain's own speed - they belong to
 			// the world, so they are on the track's clock, stop when it stops, and come out of the fog and
 			// leave by the front edge like everything else. Drawn as short streaks down the line of flight,
@@ -544,7 +551,7 @@ function create(): Preset {
 			// tallest ridge so the terrain never has to hide one, and lit by the sound.
 			if (FEATURES.dust.on && presence > 0.02) {
 				const span = K.PAST_BEATS + K.FUTURE_BEATS;
-				const light = presence * (0.1 + c.energy * 0.5);
+				const light = presence * (0.1 + c.energy * 0.5) * K.DUST_LIGHT;
 				ctx.lineWidth = Math.max(1, scale * 0.0011);
 				// one short stroke a speck, at its own strength. Not one path for all of them: a path's cost on
 				// the GPU goes by the area it spans, and specks spread over the whole picture made three
@@ -571,7 +578,7 @@ function create(): Preset {
 			// ground to either side has no body to fill and is two straight lines.
 			//   flat     how much of its height it still has (what has been played sinks)
 			//   alpha    the line's strength
-			//   glint    how brightly its body is lit from "now" (5)
+			//   glint    how brightly its body is lit from "now" (4)
 			const row = (data: Float32Array, z: number, flat: number, alpha: number, lineWidth: number, hue: number, level: number, glint: number) => {
 				const yBase = baseAt(z);
 				const lift = (ridge / z) * flat * presence;
@@ -597,7 +604,7 @@ function create(): Preset {
 				const sat = base.s * 0.9 * (FEATURES.height.on ? 1 - far * 0.45 : 1);
 				const rgb = hslToRgb(base.h + hue, sat, base.l * (FEATURES.height.on ? 0.42 + level * 0.5 : 0.55 + level * 0.6));
 
-				// ---- 5. LIT MOUNTAINS ----
+				// ---- 4. LIT MOUNTAINS ----
 				// A body near "now" is not black but faintly lit from its ridge down, as if by the line.
 				// It stays OPAQUE - the light is in the colour, never in the alpha - or it would stop
 				// hiding the rows behind it. Dim enough that the glow pass leaves it alone.
@@ -744,7 +751,7 @@ function create(): Preset {
 				// how strong the sound it stands on was: an accent is a heavier, brighter row, and a row
 				// that is only there to fill the ground is the faintest
 				const weight = rowWeights[n];
-				// how near "now" it is: what lights its body (5)
+				// how near "now" it is: what lights its body (4)
 				const near = Math.exp(-Math.pow(tau / (beat * 2), 2));
 				row(
 					data,
@@ -816,33 +823,8 @@ function create(): Preset {
 			}
 			ctx.restore();
 
-			// ---- 4. THE REFLECTION -----------------------------------------------------------------------------------
-			// The ground in front of "now" is wet, and what it reflects is the one bright thing: the line,
-			// upside down under its own baseline, BLURRED and fading with depth - a smear of light on a wet
-			// floor, not a second drawing. (The first version mirrored the nearest rows as sharp lines:
-			// it read as more terrain, upside down, tangled into the real one.) Added over what has just
-			// been played, which is sinking there anyway.
 			const edge = midAt(K.Z_NOW) + (K.SIDE * half) / K.Z_NOW;
 			const edge0 = midAt(K.Z_NOW) - (K.SIDE * half) / K.Z_NOW;
-			if (FEATURES.mirror.on && liftNow > 3) {
-				ctx.save();
-				ctx.globalCompositeOperation = "lighter";
-				ctx.filter = `blur(${Math.max(2, scale * 0.008).toFixed(1)}px)`;
-				ctx.beginPath();
-				ctx.moveTo(xs[0], yNow);
-				for (let i = 0; i < POINTS; i++) ctx.lineTo(xs[i], yNow + live[i] * liftNow * 0.8);
-				ctx.lineTo(xs[POINTS - 1], yNow);
-				// nothing AT the surface, most just under it: flat ground reflects flat ground, which is the
-				// line itself, and lit there the reflection was a strip of glow with two ends
-				const wet = ctx.createLinearGradient(0, yNow, 0, yNow + liftNow * 1.2);
-				wet.addColorStop(0, rgbString(liveRgb, 0));
-				wet.addColorStop(0.14, rgbString(liveRgb, 0.75));
-				wet.addColorStop(1, rgbString(liveRgb, 0));
-				ctx.strokeStyle = wet;
-				ctx.lineWidth = Math.max(2, scale * 0.007);
-				ctx.stroke();
-				ctx.restore();
-			}
 
 			// ---- the waveform itself, on top -------------------------------------------------------------------------
 			ctx.beginPath();
@@ -850,11 +832,11 @@ function create(): Preset {
 			for (let i = 0; i < POINTS; i++) ctx.lineTo(xs[i], yNow - live[i] * liftNow);
 			ctx.lineTo(edge, yNow);
 			ctx.strokeStyle = rgbString(liveRgb, 0.95);
-			ctx.lineWidth = Math.max(1.5, scale * 0.0042);
+			ctx.lineWidth = Math.max(1.5, scale * 0.0042) * K.LINE;
 			ctx.stroke();
 
 			// the halo swells with the sound itself and with a moment
-			glow(ctx, ctx.canvas, width, height, scale, 0.3 + c.energy * 0.6 + c.impact * 0.5);
+			glow(ctx, ctx.canvas, width, height, scale, (0.3 + c.energy * 0.6 + c.impact * 0.5) * K.GLOW);
 		}
 	};
 }

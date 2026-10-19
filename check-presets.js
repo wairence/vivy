@@ -16,6 +16,7 @@ execFileSync(
 	[
 		path.join(__dirname, "node_modules", "typescript", "bin", "tsc"),
 		"src/presets/index.ts",
+		"src/colours.ts",
 		"src/audio-sync.ts",
 		"src/types/audio-analysis.d.ts",
 		"src/types/spicetify.d.ts",
@@ -332,6 +333,32 @@ for (const audio of [fakeAudio(7), null]) {
 		tune.resetKnobs(definition.id);
 		console.log(`ok  ${definition.id} knobs (${t.knobs.length}, all at min and all at max)`);
 	}
+}
+
+// The colours: every source with every gradient, from a dark, a grey and a light cover palette and
+// from picked colours (pure black and white among them). No combination may draw a NaN.
+{
+	const colours = require(path.join(OUT, "colours.js"));
+	const palette = [{ r: 12, g: 20, b: 60 }, { r: 128, g: 128, b: 128 }, { r: 250, g: 240, b: 200 }];
+	for (const definition of PRESETS) {
+		let n = 0;
+		for (const mode of ["cover", "custom"])
+			for (const follows of ["height", "depth", "sound"]) {
+				colours.setColours({ mode, follows, stops: ["#000000", "#ff2a6d", "#ffffff"], harmony: 0.5 });
+				const preset = definition.create();
+				const ctx = createContext();
+				label = `${definition.id}/colours ${mode} ${follows}`;
+				checking = true;
+				for (let f = 0; f < 120; f++) {
+					preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: palette[1], palette, mouse: { x: 0, y: 0, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 } });
+					checkDiagnostics(`${label} frame ${f}`);
+				}
+				checking = false;
+				n++;
+			}
+		console.log(`ok  ${definition.id} colours (${n} combinations)`);
+	}
+	colours.setColours({ mode: "cover", follows: "height", stops: ["#1e3a8a", "#5de6f0"], harmony: 1 });
 }
 
 for (const warning of warnings) console.log(`warn  ${warning}`);

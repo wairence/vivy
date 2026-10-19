@@ -140,7 +140,7 @@ The song as terrain coming towards the viewer, drawn as a ridgeline plot: rows f
 
 Rows. A row is the song at one moment. Its height is the loudness then; its shape is the harmony then. `shape()` fills 96 points across: each of the 12 pitch classes is a Gaussian hill (`HILL` wide), laid across in circle-of-fifths order so a chord's notes stand next to each other and make one mountain. The hill is weighted by `pitches^1.5`, scaled by loudness, averaged over three samples across the row's span. A sharp segment (`loudness_max_time` short) roughens the ridge with noise (`JAG`); the line is then smoothed along its length (`SMOOTH`) and rounded off by `RIDGE_LIMIT * tanh(x / RIDGE_LIMIT)`. With no notes it is one broad hill. The row's section key hue and loudness are stored after its points. A row's shape is fixed while it is on screen (cached by index in a `Map`).
 
-Where rows stand (`setGrid`, key 8, "rows on accents"). One row per segment, since a segment is where a sound begins. Its weight is the segment's `confidence`. Two segments closer than `ROW_GAP_MIN` beats become one row (the stronger). Bars add or mark a row at each bar start. Any stretch longer than `ROW_GAP_MAX` beats gets weightless filler rows so the ground has no hole. A heavier row is brighter and thicker. With the switch off, rows sit on the beats and their midpoints, all of one weight.
+Where rows stand (`setGrid`, key 7, "rows on accents"). One row per segment, since a segment is where a sound begins. Its weight is the segment's `confidence`. Two segments closer than `ROW_GAP_MIN` beats become one row (the stronger). Bars add or mark a row at each bar start. Any stretch longer than `ROW_GAP_MAX` beats gets weightless filler rows so the ground has no hole. A heavier row is brighter and thicker. With the switch off, rows sit on the beats and their midpoints, all of one weight.
 
 Depth is time, in beats of the track. `Z_NOW` is the depth of "now"; `FUTURE_BEATS` of future recede to `zFar`; `PAST_BEATS` of past sink towards the front edge (`sunkAt`, `playedAt`). Rows rise out of the fog at the horizon, flat at first (`farAt`). Perspective: base line `hy + ground / z`, width `half / z`, height `ridge / z`. Sizes are taken from the 16:9 picture that fits the screen, so an ultrawide does not stretch the terrain and a portrait screen does not shoot the peaks up.
 
@@ -148,18 +148,17 @@ The line at "now" is the waveform: the terrain's cross-section under the playhea
 
 Presence. A new track or a seek (the playhead moves more than 0.5 s from the shown time) lets the old terrain sink flat on its own clock, then swaps in the new one and lets it rise. Paused, the terrain is put up directly at the paused moment and one frame is drawn; nothing is drawn again until the track, position, size, a knob or a feature switch changes.
 
-The eight switches (keys 1-8, `FEATURES`):
+The seven switches (keys 1-7, `FEATURES`):
 
 | key | feature | what it does |
 |---|---|---|
-| 1 | horizon glow | a haze at the far edge, as bright as the next stretch of the track is loud, in the colour of the section coming. Two half-ellipse radial gradients, drawn first so the far mountains are silhouettes |
+| 1 | horizon glow | a haze at the far edge, as bright as the next stretch of the track is loud, in the colour of the section coming. A low wide band (one radial gradient stretched across, `SKY_HEIGHT`/`SKY_WIDTH`/`SKY_BRIGHT`), drawn first so the far mountains are silhouettes |
 | 2 | bars and section gates | the first beat of a bar is a brighter, heavier row. A section boundary is a row of its own in that section's colour, fainter if the boundary's confidence is low. It is a line and a colour only |
-| 3 | colour by height | hue from the section's key (album hue plus `keyHueAt`), depth takes saturation out, row loudness sets lightness, one stroke graded paler towards the peaks |
-| 4 | reflection | the live line upside down and blurred under the ground. Off by default |
-| 5 | lit mountains | the body near "now" is faintly lit from its ridge down. The light is in the colour, never in the alpha, so the body still hides what is behind |
-| 6 | camera | height and horizon follow the music, plus a slow side sway |
-| 7 | dust | 70 specks drawn as short streaks along the line of flight, on the track's clock, kept above the tallest ridge, lit by `energy` |
-| 8 | rows on accents | see above |
+| 3 | colour by height | hue from the palette (see Colours) plus the section's key (`keyHueAt`), depth takes saturation out, row loudness sets lightness, one stroke graded paler towards the peaks |
+| 4 | lit mountains | the body near "now" is faintly lit from its ridge down. The light is in the colour, never in the alpha, so the body still hides what is behind |
+| 5 | camera | height and horizon follow the music, plus a slow side sway |
+| 6 | dust | 70 specks drawn as short streaks along the line of flight, on the track's clock, kept above the tallest ridge, lit by `energy` |
+| 7 | rows on accents | see above |
 
 Camera. Two eased levels drive it, both read off the timeline: `lately` (a follower of `loudness`) and `ahead` (the loudness curve averaged over beats 4 to 16 ahead). It rides high over a loud passage and low over a quiet one, and crouches when `ahead` exceeds `lately`, so a build is seen from under the wall it is building. Lower also moves the horizon down, so the view looks up. Eased at 0.7 per second. The camera never reads the moment detector.
 

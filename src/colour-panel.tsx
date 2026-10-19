@@ -109,8 +109,8 @@ const MODES: [ColourMode, string][] = [
 	["custom", "Custom"]
 ];
 const FOLLOWS: [Follows, string, string][] = [
-	["height", "Height", "Valleys take the first colour, peaks the last: the louder, the further along"],
-	["depth", "Depth", "What is coming, far away, takes the first colour; now, up close, the last"],
+	["height", "Height", "Ridgeline: valleys take the first colour, peaks the last. Drift: the haze, the hairlines and the marks take one colour each"],
+	["depth", "Depth", "Far away takes the first colour, up close the last. In Ridgeline far away is what is coming"],
 	["sound", "Sound", "The whole picture slides along the colours with how loud the music is"]
 ];
 

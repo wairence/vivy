@@ -40,7 +40,7 @@ To remove it, run `spicetify config custom_apps vivy-`, then `spicetify apply`, 
 | `F` | fullscreen |
 | `P` | mini window (stays on top of other windows) |
 | `T` | sliders for the current preset |
-| `1`–`8` | Ridgeline: turn individual effects on/off |
+| `1`–`7` | Ridgeline: turn individual effects on/off |
 
 Mini window: drag it to move it, scroll or press `+` / `−` to resize it, `Esc` to close it.
 

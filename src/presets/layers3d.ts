@@ -19,7 +19,7 @@
 // 2D canvas cannot stroke at 144 Hz.
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
-import { createConductor, hslToRgb, publishDiagnostics } from "./flowfield-common";
+import { createConductor, Hsl, hslToRgb, publishDiagnostics } from "./flowfield-common";
 import { colours, palette, paletteAt } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition } from "./types";
@@ -161,7 +161,8 @@ const K = tune("layers3d", {
 	GROUND_WIDTH: [GROUND_WIDTH, 0.0005, 0.02, "ground ribbon width"],
 	SHEET_WIDTH: [SHEET_WIDTH, 0.0005, 0.02, "sheet ribbon width"],
 	MARK_WIDTH: [MARK_WIDTH, 0.0005, 0.02, "mark ribbon width"],
-	MAX_HALF_WIDTH: [MAX_HALF_WIDTH, 0.001, 0.03, "no ribbon wider than"]
+	MAX_HALF_WIDTH: [MAX_HALF_WIDTH, 0.001, 0.03, "no ribbon wider than"],
+	GLOW: [1, 0, 2.5, "halo strength", "look"]
 	},
 	// what each one does, shown beside the panel on hover
 	{
@@ -203,8 +204,11 @@ const K = tune("layers3d", {
 		GROUND_WIDTH: "Thickness of the wide, dim ribbons. Higher makes them fatter.",
 		SHEET_WIDTH: "Thickness of the thin hairlines. Higher makes them heavier lines.",
 		MARK_WIDTH: "Thickness of the tail behind each mark. Higher makes it thicker.",
-		MAX_HALF_WIDTH: "Widest any ribbon may look on screen, however close. Lower stops close strokes turning into broad bands."
-	}
+		MAX_HALF_WIDTH: "Widest any ribbon may look on screen, however close. Lower stops close strokes turning into broad bands.",
+		GLOW: "The soft halo around the light. Zero is clean and sharp; higher blooms every mark into a cloud."
+	},
+	// shown without "More"; the rest is for whoever wants to dig
+	["FOCAL", "ORBIT_REST", "ORBIT_LOUD", "CLOUD", "MARK_TRAIL", "FLOW_MAX", "MAX_STAR", "GLOW"]
 );
 
 
@@ -268,23 +272,28 @@ const RIBBON_VS = `
 attribute vec2 a_pos;
 attribute float a_alpha;
 attribute float a_side;
+attribute float a_tone;
 uniform vec2 u_res;
 varying float v_alpha;
 varying float v_side;
+varying float v_tone;
 void main() {
 	v_alpha = a_alpha;
 	v_side = a_side;
+	v_tone = a_tone;
 	gl_Position = vec4(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0, 0.0, 1.0);
 }`;
 // soft across its width, so a ribbon has no hard edge at any size
 const RIBBON_FS = `
 precision mediump float;
 uniform vec3 u_color;
+uniform vec3 u_near;
 varying float v_alpha;
 varying float v_side;
+varying float v_tone;
 void main() {
 	float e = 1.0 - v_side * v_side;
-	gl_FragColor = vec4(u_color * v_alpha * e, 1.0);
+	gl_FragColor = vec4(mix(u_color, u_near, v_tone) * v_alpha * e, 1.0);
 }`;
 const HEAD_VS = `
 attribute vec2 a_pos;
@@ -320,7 +329,7 @@ type Renderer = {
 	canvas: HTMLCanvasElement;
 	// a GPU reset, a driver update, sleep: the context goes, and everything made in it with it
 	lost: () => boolean;
-	draw: (width: number, height: number, layers: { verts: Float32Array; count: number; rgb: Rgb }[], heads: Float32Array, headCount: number, headRgb: Rgb) => void;
+	draw: (width: number, height: number, layers: { verts: Float32Array; count: number; rgb: Rgb; near: Rgb }[], heads: Float32Array, headCount: number, headRgb: Rgb) => void;
 };
 
 // null wherever there is no WebGL - the headless check harness, or a client with it switched off. The
@@ -407,10 +416,12 @@ function createRenderer(maxParticles: number): Renderer | null {
 			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ribbonIbo);
 			for (const layer of layers) {
 				gl.bufferData(gl.ARRAY_BUFFER, layer.verts, gl.DYNAMIC_DRAW);
-				attr(ribbon, "a_pos", 2, 4, 0);
-				attr(ribbon, "a_alpha", 1, 4, 2);
-				attr(ribbon, "a_side", 1, 4, 3);
+				attr(ribbon, "a_pos", 2, 5, 0);
+				attr(ribbon, "a_alpha", 1, 5, 2);
+				attr(ribbon, "a_side", 1, 5, 3);
+				attr(ribbon, "a_tone", 1, 5, 4);
 				gl.uniform3f(gl.getUniformLocation(ribbon, "u_color"), layer.rgb.r / 255, layer.rgb.g / 255, layer.rgb.b / 255);
+				gl.uniform3f(gl.getUniformLocation(ribbon, "u_near"), layer.near.r / 255, layer.near.g / 255, layer.near.b / 255);
 				gl.drawElements(gl.TRIANGLES, layer.count * (TRAIL - 1) * 6, gl.UNSIGNED_SHORT, 0);
 			}
 
@@ -512,9 +523,9 @@ function create(): Preset {
 	const sheetTrail = trailOf(sheet, K.SHEET_TRAIL);
 	const markTrail = trailOf(marks, K.MARK_TRAIL);
 
-	const groundVerts = new Float32Array(GROUND_COUNT * TRAIL * 2 * 4);
-	const sheetVerts = new Float32Array(SHEET_COUNT * TRAIL * 2 * 4);
-	const markVerts = new Float32Array(MARK_POOL * TRAIL * 2 * 4);
+	const groundVerts = new Float32Array(GROUND_COUNT * TRAIL * 2 * 5);
+	const sheetVerts = new Float32Array(SHEET_COUNT * TRAIL * 2 * 5);
+	const markVerts = new Float32Array(MARK_POOL * TRAIL * 2 * 5);
 	const headVerts = new Float32Array(MARK_POOL * 4 * 6);
 
 	const glow = createGlow();
@@ -670,17 +681,23 @@ function create(): Preset {
 			// following the sound, the whole family slides along it with the music.
 			const pal = palette(frame.palette ?? [colorRgb]);
 			soundAt += (Math.min(1, Math.max(0, c.energy)) - soundAt) * Math.min(1, c.dt / 0.8);
+			// Following depth, every stroke runs from the first colour where the fog begins to the last at
+			// the lens, each layer keeping its own lightness; otherwise near and far are the same colour.
 			const along = (t: number) => paletteAt(pal, colours.follows === "sound" ? t * 0.5 + soundAt * 0.5 : t);
+			const byDepth = colours.follows === "depth";
 			// the cover's palette is spread a little round the wheel between the layers; picked colours stay as picked
 			const turn = colours.mode === "cover" ? 1 : 0;
 			const key = keyHue(audio, progressSec, c.dt) * colours.harmony;
-			const g = along(0);
-			const sh = along(0.5);
-			const m = along(1);
 			const shimmer = shimmerPhase(fieldTime);
-			const groundRgb = shimmerTint(hslToRgb(g.h + key, g.s * 0.7, g.l * 0.62), shimmer, tintPulse * 0.4);
-			const sheetRgb = shimmerTint(hslToRgb(sh.h + key + 0.06 * turn, sh.s, sh.l), shimmer, tintPulse);
-			const markRgb = shimmerTint(hslToRgb(m.h + key + 0.14 * turn, Math.min(1, m.s + 0.08), Math.min(0.78, m.l + 0.14)), shimmer, tintPulse);
+			const groundOf = (g: Hsl) => shimmerTint(hslToRgb(g.h + key, g.s * 0.7, g.l * 0.62), shimmer, tintPulse * 0.4);
+			const sheetOf = (sh: Hsl) => shimmerTint(hslToRgb(sh.h + key + 0.06 * turn, sh.s, sh.l), shimmer, tintPulse);
+			const markOf = (m: Hsl) => shimmerTint(hslToRgb(m.h + key + 0.14 * turn, Math.min(1, m.s + 0.08), Math.min(0.78, m.l + 0.14)), shimmer, tintPulse);
+			const groundRgb = groundOf(along(byDepth ? 0 : 0));
+			const sheetRgb = sheetOf(along(byDepth ? 0 : 0.5));
+			const markRgb = markOf(along(byDepth ? 0 : 1));
+			const groundNear = byDepth ? groundOf(along(1)) : groundRgb;
+			const sheetNear = byDepth ? sheetOf(along(1)) : sheetRgb;
+			const markNear = byDepth ? markOf(along(1)) : markRgb;
 
 
 			// ---- the wake: what the marks cutting through the field do to a stroke at (x, y, z) -----------------
@@ -724,7 +741,7 @@ function create(): Preset {
 			const maxHalf = height * K.MAX_HALF_WIDTH;
 			const ribbon = (verts: Float32Array, t: Trail, i: number, alpha: number, halfWidth: number) => {
 				const back = 1 - t.clock / t.step;
-				let o = i * TRAIL * 8;
+				let o = i * TRAIL * 10;
 				for (let j = 0; j < TAIL; j++) {
 					const qa = (i * RING + ((t.head - j + RING) % RING)) * 3;
 					let wx = t.points[qa];
@@ -752,6 +769,8 @@ function create(): Preset {
 					// a ribbon finer than a pixel is drawn a pixel wide and dimmer, not thinner
 					hws[k] = Math.max(0.6, w);
 					als[k] = alpha * seen * (1 - age) * Math.min(1, w / 0.6);
+					// how near it is, for a gradient that follows depth: 1 at the lens, 0 where the fog begins
+					tns[k] = 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark));
 				}
 				// the nose, along the way it is going on screen (a ribbon standing still has none)
 				let nx0 = sxs[2] - sxs[3];
@@ -772,6 +791,7 @@ function create(): Preset {
 				sys[0] = sys[2] + ny0 * hws[2];
 				hws[0] = hws[2] * 0.2;
 				als[0] = als[2];
+				tns[0] = tns[1] = tns[2];
 				// A stroke coming straight at the lens is a short fat slab on screen - "flat". It is a point
 				// of light seen end-on, so it dims as its length on screen falls under a few of its widths.
 				const endOn = Math.min(1, Math.hypot(sxs[2] - sxs[TRAIL - 1], sys[2] - sys[TRAIL - 1]) / (hws[2] * 6));
@@ -806,10 +826,12 @@ function create(): Preset {
 					verts[o++] = sys[j] + nys[j] * hws[j];
 					verts[o++] = a;
 					verts[o++] = 1;
+					verts[o++] = tns[j];
 					verts[o++] = sxs[j] - nxs[j] * hws[j];
 					verts[o++] = sys[j] - nys[j] * hws[j];
 					verts[o++] = a;
 					verts[o++] = -1;
+					verts[o++] = tns[j];
 					checksum += sxs[j] + sys[j] + a;
 				}
 			};
@@ -1135,19 +1157,19 @@ function create(): Preset {
 				width,
 				height,
 				[
-					{ verts: groundVerts, count: ground.length, rgb: groundRgb },
-					{ verts: sheetVerts, count: sheet.length, rgb: sheetRgb },
-					{ verts: markVerts, count: marks.length, rgb: markRgb }
+					{ verts: groundVerts, count: ground.length, rgb: groundRgb, near: groundNear },
+					{ verts: sheetVerts, count: sheet.length, rgb: sheetRgb, near: sheetNear },
+					{ verts: markVerts, count: marks.length, rgb: markRgb, near: markNear }
 				],
 				headVerts,
 				headCount,
-				markRgb
+				markNear
 			);
 
 			// ---- onto the frame, and the bloom over it -------------------------------------------------------
 			ctx.drawImage(renderer.canvas, 0, 0);
 			// the halo is the events' channel: it swells with the marks' own light and the release
-			glow(ctx, renderer.canvas, width, height, c.scale, 0.4 + tintPulse * 0.35 + release * 0.9);
+			glow(ctx, renderer.canvas, width, height, c.scale, (0.4 + tintPulse * 0.35 + release * 0.9) * K.GLOW);
 		}
 	};
 }
@@ -1159,5 +1181,6 @@ const hws = new Float32Array(TRAIL);
 const nxs = new Float32Array(TRAIL);
 const nys = new Float32Array(TRAIL);
 const als = new Float32Array(TRAIL);
+const tns = new Float32Array(TRAIL);
 
 export const layers3dPreset: PresetDefinition = { id: "layers3d", name: "Drift", experimental: true, create };
