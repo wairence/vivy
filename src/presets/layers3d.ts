@@ -19,7 +19,7 @@
 // 2D canvas cannot stroke at 144 Hz.
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
-import { createConductor, hslToRgb, publishDiagnostics } from "./flowfield-common";
+import { createConductor, hslToRgb, publishDiagnostics } from "./flowfield-common";
 import { colours, palette, paletteAt } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition } from "./types";

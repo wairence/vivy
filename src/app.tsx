@@ -3,7 +3,7 @@ import "./css/app.css";
 import { loadTrackAudioData, loadTrackAudioFeatures, nearestBarStart, trackDataFromFeatures, TrackAudioData } from "./audio-data";
 import { lastConducted } from "./presets/flowfield-common";
 import { AudioSync, createSmoothClock } from "./audio-sync";
-import { BUILD, DEV } from "./build-stamp";
+import { BUILD, DEV } from "./build-stamp";
 import { hexToRgb } from "./colours";
 import { ColourSection } from "./colour-panel";
 import { Preset, PresetFrame, PRESETS } from "./presets";
@@ -661,7 +661,7 @@ export default function App() {
 				progressSec: smoothClock(Spicetify.Player.getProgress() / 1000, isPlaying, performance.now() / 1000) - audioSync.getLatencySec(),
 				isPlaying,
 				audio: audioDataRef.current,
-				colorRgb: displayColorRef.current[1],
+				colorRgb: displayColorRef.current[1],
 				palette: displayColorRef.current,
 				mouse: {
 					x: mousePos.x,
