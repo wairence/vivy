@@ -7,6 +7,7 @@ const types = { ".html": "text/html", ".js": "text/javascript", ".json": "applic
 // at most this size - a POST from any page in a browser reaches it, so none of that is optional
 const ROOT = path.resolve(__dirname);
 const MAX_BODY = 20 * 1024 * 1024;
+const ORIGINS = ["http://localhost:8790", "http://127.0.0.1:8790", "https://xpui.app.spotify.com"];
 const inRoot = file => file === ROOT || file.startsWith(ROOT + path.sep);
 const collect = (req, res, done) => {
 	let body = "";
@@ -25,6 +26,21 @@ const collect = (req, res, done) => {
 
 http
 	.createServer((req, res) => {
+		// Only this machine's own name in the Host header: a page that points its own domain at
+		// 127.0.0.1 (DNS rebinding) would otherwise read every file here. And only these pages may post:
+		// the harness itself and the Spotify client in a dev build
+		if (!/^(localhost|127\.0\.0\.1):8790$/.test(req.headers.host || "")) {
+			res.writeHead(403);
+			res.end();
+			return;
+		}
+		const origin = req.headers.origin;
+		if (origin && !ORIGINS.includes(origin)) {
+			res.writeHead(403);
+			res.end();
+			return;
+		}
+		const cors = origin ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {};
 		// A diagnostic running inside the Spotify client cannot be read from outside it - its console
 		// and its notifications live in that window. This lets a probe post what it found somewhere
 		// readable instead of asking a human to transcribe a console line.
@@ -40,7 +56,7 @@ http
 				const dir = path.join(__dirname, "analysis-dumps");
 				fs.mkdirSync(dir, { recursive: true });
 				fs.writeFileSync(path.join(dir, safe + ".json"), body);
-				res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
+				res.writeHead(200, cors);
 				res.end("ok");
 			});
 			return;
@@ -51,7 +67,7 @@ http
 			collect(req, res, body => {
 				fs.appendFileSync(path.join(__dirname, "marks.jsonl"), `${body}
 `);
-				res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
+				res.writeHead(200, cors);
 				res.end("ok");
 				try {
 					const m = JSON.parse(body);
@@ -66,14 +82,14 @@ http
 			collect(req, res, body => {
 				fs.appendFileSync(path.join(__dirname, "probe-log.json"), `${new Date().toISOString()} ${body}
 `);
-				res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
+				res.writeHead(200, cors);
 				res.end("ok");
 			});
 			return;
 		}
 		if (req.method === "OPTIONS") {
 			res.writeHead(204, {
-				"Access-Control-Allow-Origin": "*",
+				...cors,
 				"Access-Control-Allow-Methods": "POST",
 				"Access-Control-Allow-Headers": "content-type"
 			});
@@ -85,6 +101,7 @@ http
 			const name = req.url.replace("/save/", "").replace(/[^\w.-]/g, "").replace(/^\.+/, "").slice(0, 80) || "shot";
 			collect(req, res, body => {
 				const b64 = body.replace(/^data:image\/png;base64,/, "");
+				fs.mkdirSync(path.join(__dirname, "shots"), { recursive: true });
 				fs.writeFileSync(path.join(__dirname, "shots", name + ".png"), Buffer.from(b64, "base64"));
 				res.writeHead(200);
 				res.end("ok");
