@@ -125,6 +125,20 @@ const ICON_RESET = (
 	</>
 );
 const ICON_CLOSE = <path d="M6 6l12 12M18 6L6 18" />;
+const ICON_PLAY = <path d="M8 5.5v13l10.5-6.5z" fill="currentColor" />;
+const ICON_PAUSE = <path d="M8.5 5.5v13M15.5 5.5v13" strokeWidth="2.6" />;
+const ICON_BACK = (
+	<>
+		<path d="M6.5 5.5v13" strokeWidth="2.2" />
+		<path d="M18.5 5.5v13L9 12z" fill="currentColor" />
+	</>
+);
+const ICON_NEXT = (
+	<>
+		<path d="M17.5 5.5v13" strokeWidth="2.2" />
+		<path d="M5.5 5.5v13L15 12z" fill="currentColor" />
+	</>
+);
 
 function IconButton({ label, icon, active, small, onClick }: { label: string; icon: React.ReactNode; active?: boolean; small?: boolean; onClick: () => void }) {
 	return (
@@ -1009,10 +1023,45 @@ export default function App() {
 	toggleFullscreenRef.current = toggleFullscreen;
 
 	const [progressDisplay, setProgressDisplay] = useState(0);
+	const [playing, setPlaying] = useState(false);
+	// while the bar is held, where it would seek to (shown, not yet sought)
+	const [scrub, setScrub] = useState<number | null>(null);
 	useEffect(() => {
-		const id = window.setInterval(() => setProgressDisplay(Spicetify.Player.getProgress()), 500);
-		return () => window.clearInterval(id);
+		const tick = () => {
+			setProgressDisplay(Spicetify.Player.getProgress());
+			setPlaying(Spicetify.Player.isPlaying());
+		};
+		tick();
+		const id = window.setInterval(tick, 500);
+		Spicetify.Player.addEventListener("onplaypause", tick);
+		return () => {
+			window.clearInterval(id);
+			Spicetify.Player.removeEventListener("onplaypause", tick);
+		};
 	}, []);
+	// IN FULLSCREEN THE PLAYER IS HIDDEN, so the overlay is one: the bar seeks (click, or drag and let
+	// go), and back / play / next sit under it. Outside fullscreen Spotify's own player is right there.
+	const seekFrom = (e: React.PointerEvent<HTMLDivElement>) => {
+		const bar = e.currentTarget;
+		const at = (x: number) => {
+			const r = bar.getBoundingClientRect();
+			return Math.max(0, Math.min(1, (x - r.left) / r.width));
+		};
+		bar.setPointerCapture(e.pointerId);
+		setScrub(at(e.clientX));
+		const move = (ev: PointerEvent) => setScrub(at(ev.clientX));
+		const up = (ev: PointerEvent) => {
+			bar.removeEventListener("pointermove", move);
+			bar.removeEventListener("pointerup", up);
+			const ms = at(ev.clientX) * (track?.durationMs ?? 0);
+			Spicetify.Player.seek(ms);
+			setProgressDisplay(ms);
+			setScrub(null);
+		};
+		bar.addEventListener("pointermove", move);
+		bar.addEventListener("pointerup", up);
+	};
+	const shownMs = scrub !== null && track ? scrub * track.durationMs : progressDisplay;
 
 	return (
 		<div className={`vivy-container${uiVisible ? "" : " vivy-idle"}`} ref={containerRef}>
@@ -1047,15 +1096,27 @@ export default function App() {
 						<>
 							<div className="vivy-track-name">{track.name}</div>
 							<div className="vivy-track-artist">{track.artist}</div>
-							<div className="vivy-progress-track">
-								<div
-									className="vivy-progress-fill"
-									style={{ width: `${track.durationMs ? (progressDisplay / track.durationMs) * 100 : 0}%` }}
-								/>
+							<div
+								className={`vivy-progress-track${isFullscreen ? " seek" : ""}${scrub !== null ? " held" : ""}`}
+								onPointerDown={isFullscreen ? seekFrom : undefined}
+								role={isFullscreen ? "slider" : undefined}
+								aria-label={isFullscreen ? "Seek" : undefined}
+								aria-valuemin={0}
+								aria-valuemax={Math.round(track.durationMs / 1000)}
+								aria-valuenow={Math.round(shownMs / 1000)}
+							>
+								<div className="vivy-progress-fill" style={{ width: `${track.durationMs ? (shownMs / track.durationMs) * 100 : 0}%` }} />
 							</div>
 							<div className="vivy-time">
-								{formatTime(progressDisplay)} / {formatTime(track.durationMs)}
+								{formatTime(shownMs)} / {formatTime(track.durationMs)}
 							</div>
+							{isFullscreen ? (
+								<div className="vivy-controls">
+									<IconButton label="Previous" icon={ICON_BACK} onClick={() => Spicetify.Player.back()} />
+									<IconButton label={playing ? "Pause" : "Play"} icon={playing ? ICON_PAUSE : ICON_PLAY} onClick={() => Spicetify.Player.togglePlay()} />
+									<IconButton label="Next" icon={ICON_NEXT} onClick={() => Spicetify.Player.next()} />
+								</div>
+							) : null}
 						</>
 					) : (
 						<div className="vivy-track-name">Start playing a song</div>

@@ -43,7 +43,7 @@ To remove it, run `spicetify config custom_apps vivy-`, then `spicetify apply`, 
 
 | key | |
 |---|---|
-| `F` | fullscreen |
+| `F` | fullscreen (with a seek bar and previous / play / next) |
 | `P` | mini window (stays on top of other windows) |
 | `T` | sliders for the current preset |
 | `1`–`7` | Ridgeline: turn individual effects on/off |

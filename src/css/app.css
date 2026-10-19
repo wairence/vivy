@@ -197,6 +197,40 @@
 	overflow: hidden;
 }
 
+/* fullscreen: the bar seeks, with a taller hit area than it looks */
+.vivy-progress-track.seek {
+	position: relative;
+	width: min(560px, 70vw);
+	overflow: visible;
+	cursor: pointer;
+	pointer-events: auto;
+	touch-action: none;
+	transition: height 0.15s ease;
+}
+
+.vivy-progress-track.seek::before {
+	content: "";
+	position: absolute;
+	inset: -10px 0;
+}
+
+.vivy-progress-track.seek:hover,
+.vivy-progress-track.seek.held {
+	height: 6px;
+}
+
+.vivy-controls {
+	display: flex;
+	gap: 10px;
+	margin-top: 14px;
+	pointer-events: auto;
+}
+
+.vivy-idle .vivy-progress-track.seek,
+.vivy-idle .vivy-controls {
+	pointer-events: none;
+}
+
 .vivy-progress-fill {
 	height: 100%;
 	background: var(--vivy-accent);

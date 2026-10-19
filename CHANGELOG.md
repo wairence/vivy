@@ -7,6 +7,7 @@
 - New settings: halo strength (both presets); line thickness, dust brightness and camera sway (Ridgeline).
 - Ridgeline: the horizon glow is a low wide band instead of a round spot. The reflection effect is gone.
 - Drift: draws a frame while paused, so a change made while paused shows at once and switching to Drift is no longer black.
+- Fullscreen: seek on the progress bar, and previous / play-pause / next under it.
 - Mini window: the buttons are proper icons.
 
 ## 0.1.0 — 2026-10-19
