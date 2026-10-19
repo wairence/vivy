@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "./colours";
 
-// THE COLOURS, at the top of the knobs panel: the cover's palette or picked colours, and what the
+// The colours, at the top of the knobs panel: the cover's palette or picked colours, and what the
 // gradient follows. A picked colour opens a picker beside the panel (where the panel's scrolling
 // would cut it off), placed the same way as the knobs' hints.
 

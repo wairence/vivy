@@ -1,8 +1,8 @@
 // ---- live knobs -----------------------------------------------------------------------------------------
-// A preset's numbers, turned while the music plays (T in the client opens the panel). The loop was:
-// change a constant, build, apply, restart Spotify, find the place in the song, look - minutes a
-// number. With a slider it is a second, and the number that looked right is copied out of the panel
-// and written back into the code as the new default.
+// A preset's numbers, turned while the music plays (T in the client opens the panel). Changing a
+// constant otherwise means build, apply, restart Spotify and find the place in the song again; a
+// slider takes a second, and the value that looks right is copied out of the panel and written back
+// into the code as the new default.
 //
 // A preset declares its knobs once, at module scope:
 //     const K = tune("ridge", { HORIZON: [0.3, 0.1, 0.5, "horizon height", "view"], ... });
@@ -15,7 +15,6 @@ export type Knob = { key: string; def: number; min: number; max: number; label: 
 export type Feature = { name: string; on: boolean };
 export type Tuning = { knobs: Knob[]; values: Record<string, number>; features: Feature[] };
 
-// (everything moved under the older keys was written into the code on 2026-10-18)
 const STORE = "vivy:tune:";
 const tunings = new Map<string, Tuning>();
 // bumped on every change, so a preset that caches what a knob shaped (a row, a table) knows to redo it

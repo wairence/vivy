@@ -2,7 +2,7 @@
 
 vivy is a Spicetify CustomApp: a page in the Spotify desktop client with a full-size canvas. It does not listen to audio. It reads Spotify's precomputed analysis of the track and draws from that timeline, so it can show what is coming as well as what is playing. Two presets ship: Ridgeline (`ridge`, Canvas 2D, the default) and Drift (`layers3d`, WebGL, marked experimental).
 
-`DATA.md` covers the analysis fields, how far each can be trusted and the signals derived from them. This file covers how the code is put together. Source comments cite "DESIGN-RULES §n"; that file is not published.
+`DATA.md` covers the analysis fields, how far each can be trusted and the signals derived from them. This file covers how the code is put together.
 
 ## Data flow
 
@@ -22,6 +22,8 @@ Spicetify.extractColorPreset ---+    (React shell,                 |
 | `src/track-structure.ts` | finds the track's big moments and measures the run-in to each |
 | `src/rhythm.ts` | decodes `rhythmstring` into broadband hits |
 | `src/audio-sync.ts` | output-latency correction and the smoothed clock |
+| `src/colours.ts` | per-preset colour settings: cover palette or picked colours, what the gradient follows, the cover's colours by area |
+| `src/colour-panel.tsx` | the colour part of the knobs panel and the colour picker |
 | `src/presets/types.ts` | `PresetFrame`, `Preset`, `PresetDefinition`, `currentEnergy` |
 | `src/presets/index.ts` | `PRESETS`, the list the UI shows |
 | `src/presets/flowfield-common.ts` | the Conductor, album-colour helpers, dev hooks |
@@ -29,7 +31,6 @@ Spicetify.extractColorPreset ---+    (React shell,                 |
 | `src/presets/next-sound.ts` | the next sound's properties, for Drift |
 | `src/presets/tune.ts` | live knobs |
 | `src/presets/ridge.ts`, `layers3d.ts` | the two presets |
-| `src/live-audio.ts` | system-audio analyser for the standalone window only |
 
 ## Loading the analysis
 
@@ -47,7 +48,7 @@ What each preset does without data: Ridgeline has no segments to build a shape f
 
 ## Structure and rhythm
 
-`track-structure.ts` exports `findMoments`. What runs is `findRises`: up to five places per track where the loudness takes its largest sustained step up, each with a `size`, a measured `leadSeconds`, and how far the music dips (`dip`) or climbs (`build`) on the way in. The older repetition-based chorus detector in the same file is switched off (`ENABLED = false`) and still runs under `npm run structure`. Details and measurements are in DATA.md section 3.1.
+`track-structure.ts` exports `findMoments`. What runs is `findRises`: up to five places per track where the loudness takes its largest sustained step up, each with a `size`, a measured `leadSeconds`, and how far the music dips (`dip`) or climbs (`build`) on the way in. The older repetition-based chorus detector in the same file is switched off (`ENABLED = false`). Details and measurements are in DATA.md section 3.1.
 
 `rhythm.ts` exports `decodeHits` (inflate with `DecompressionStream`, parse eight bands of onset times, cluster onsets within 25 ms, keep clusters of at least three bands) and `hitIndexAt`. If inflating fails, `hits` is empty.
 
@@ -87,7 +88,7 @@ Between tracks the conductor holds `loudness` and `energy` near a rest level whi
 
 `types.ts`:
 
-- `PresetFrame`: `ctx` (2D context of the visible canvas), `width`, `height` (canvas pixels), `progressSec`, `isPlaying`, `audio` (`TrackAudioData | null`), `colorRgb` (eased album colour), `mouse`.
+- `PresetFrame`: `ctx` (2D context of the visible canvas), `width`, `height` (canvas pixels), `progressSec`, `isPlaying`, `audio` (`TrackAudioData | null`), `colorRgb` (eased album colour), `palette` (the cover's dark, vibrant and light colours, eased), `coverColours` (those three, then the cover's own colours by area, six in all), `mouse` (passed in, ignored by both presets).
 - `Preset`: `draw(frame)`. It is called every animation frame, playing or not. It owns whatever state it keeps.
 - `PresetDefinition`: `id`, `name`, optional `experimental`, `create()`.
 - `currentEnergy(frame)`: loudness-curve value, a sine when there is no analysis and playing, 0.5 when paused.
@@ -107,7 +108,7 @@ Frame loop. `render` builds a `PresetFrame` and calls `preset.draw` in a try/cat
 
 Preset switching. The chosen id is kept in `localStorage` under `vivy:preset`. On change, an effect calls the new preset's `create()` and clears the 2D canvas. The preset buttons in the top bar come from `PRESETS`; experimental ones get an "exp" tag.
 
-Input. The canvas tracks the mouse (position, speed, clicks, wheel, alt+wheel) and passes it in `frame.mouse`. Keys, all ignored with ctrl, alt or meta held and inside text inputs:
+Input. The canvas tracks the mouse (position, speed, clicks, wheel, alt+wheel) and passes it in `frame.mouse`, but neither preset reads it. Keys, all ignored with ctrl, alt or meta held and inside text inputs:
 
 | key | |
 |---|---|
@@ -133,7 +134,17 @@ const K = tune("ridge", { HORIZON: [0.3429, 0.05, 0.6, "horizon height", "view"]
 
 Each spec is `[default, min, max, label, group?]` (the group carries over to the following knobs). `tune()` returns an object whose properties are the live values. The panel writes into it and the preset reads `K.HORIZON` each frame. Persistence: values moved off their default are stored in `localStorage` under `vivy:tune:<preset>` as `[value, defaultAtTheTimeOfMoving]`. On load a stored value is used only if the code's default is still the one it was moved from, so changing a default in code wins and an old move does not come back when a default happens to return to its old value. `setKnob` clamps to the range. Every change bumps `tuneVersion()`, which a preset that caches work shaped by a knob (Ridgeline's rows and hills) compares to know when to redo it. `tuneFeatures()` shows a preset's number-key switches in the panel. `check-presets.js` runs each preset with every knob at its minimum and at its maximum.
 
-Hints. The panel shows a knob's label and value; the tooltip on the label is its key and default.
+Hints. `tune()` takes a third argument of one-sentence descriptions; hovering a knob shows its hint and default beside the panel.
+
+## Colours
+
+Each preset declares its gradients once, at module scope, with `colourSettings(preset, gradients)` in `colours.ts`, the way it declares knobs. The returned object is live: the colour section of the panel (`colour-panel.tsx`) writes `mode`, `stops`, `follows` and `harmony` into it and the next frame reads them.
+
+- Source. `cover` uses the cover's palette; `custom` uses two or three colours picked in the panel. `palette()` turns either into HSL stops, keeping the cover's three in separate bands of lightness and picked colours off pure black and white. `harmony` (0..1) scales how far the section's key turns the hue.
+- What the gradient follows (`follows`). Ridgeline: `height` (a row's loudness), `depth` (far to near), `sound` (the music's loudness now). Drift: `layers` (haze, hairlines and marks one colour each), `depth`, `sounds` (each mark by how ringing its sound was), `music` (everything slides with loudness). `paletteAt()` reads a point along the stops.
+- Cover colours. Spotify's extraction gives dark, vibrant and light colours. Drift also reads the cover's pixels: `app.tsx` draws the cover into a 48 px canvas and `coverHues()` groups the coloured pixels by hue; every hue group covering at least 10% of the coloured area becomes a colour (up to three; `distinctCover()` orders them dark to light). A cover with fewer than two such groups falls back to the extracted shades (`distinctCover()`).
+- Storage. Settings are kept per preset in `localStorage` under `vivy:colours:<preset>`.
+
 ## Ridgeline (`ridge.ts`)
 
 The song as terrain coming towards the viewer, drawn as a ridgeline plot: rows from far to near, each filled below its line so it hides what is behind. Plain 2D canvas, redrawn whole every frame, so the glow pass may run on the whole picture.
@@ -206,7 +217,7 @@ WebGL handling.
 
 `stamp.js` writes `src/build-stamp.ts` (`BUILD` time and `DEV`). It is generated and ignored by git. A client reads `index.js` once at startup, so the stamp is how to tell a change that failed from one that never loaded.
 
-`check-presets.js` compiles `src/presets/index.ts` and `audio-sync.ts` with `tsc` into `node_modules/.cache/preset-check` and drives every preset against a fake 2D context that throws on a non-finite number, a colour channel outside 0..255, a negative alpha, a non-positive line width or a negative arc radius. It runs each preset with a synthetic analysis and with `audio: null`: 400 frames at 60 fps with a moving mouse, a seek back 40 s, then paused frames that must produce byte-identical call logs. Then every knob at its minimum and at its maximum for 200 frames. Then the between-tracks level (never climbs while waiting, never steps by 0.02 in a frame) and the smooth clock (frame steps within 3%, within 2 ms of the player, a seek taken at once). It prints warnings for alpha above 1. It cannot see GPU output.
+`check-presets.js` compiles `src/presets/index.ts`, `colours.ts` and `audio-sync.ts` with `tsc` into `node_modules/.cache/preset-check` and drives every preset against a fake 2D context that throws on a non-finite number, a colour channel outside 0..255, a negative alpha, a non-positive line width or a negative arc radius. It runs each preset with a synthetic analysis and with `audio: null`: 400 frames at 60 fps with a moving mouse, a seek back 40 s, then paused frames that must produce byte-identical call logs. Then every knob at its minimum and at its maximum for 200 frames. Then every colour source with every gradient, and `coverHues` on synthetic covers. Then the between-tracks level (never climbs while waiting, never steps by 0.02 in a frame) and the smooth clock (frame steps within 3%, within 2 ms of the player, a seek taken at once). It prints warnings for alpha above 1. It cannot see GPU output.
 
 CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck` and `npm run check` on Node 20 for every pull request and every push to `main`. The release workflow runs on a tag like `v0.1.1`: the same checks, `npm run release`, zips `index.js`, `manifest.json` and `style.css` into a `vivy` folder as `vivy.zip` and attaches it to a GitHub release.
 
@@ -214,13 +225,4 @@ CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck` and `npm run 
 
 `perf-serve.js` is a small dev server on `127.0.0.1:8790`: it serves files from the repository and accepts `POST /dump` (an analysis, to `analysis-dumps/`), `/mark` (to `marks.jsonl`), `/log` (to `probe-log.json`) and `/save/<name>` (a PNG, to `shots/`). It limits bodies to 20 MB and answers only this machine. Dev builds of the app post to it when it is running.
 
-Preview harness (`npm run preview`, then `preview-harness.html`). Renders the presets in a plain browser tab from a synthetic track (`normaliseCurve` applied, no `hits` and no `moments`). Query parameters: `preset`, `warmup` (frames drawn synchronously before showing, since a headless tab cannot be trusted with `requestAnimationFrame`), `at` (the warm-up ends at this second), `fps`, `freeze=1`, `manual=1` (only `drawFramesSync` draws), `audio=shots/<name>.audio.json` (a real track, see `music-lab.js`). `warmup=900` lands in the quietest point of the synthetic track; `warmup=1260` is representative. Console helpers: `conducted()`, `diagnostics()`, `drawFramesSync(n)`, `saveShot(name)`. Space pauses, arrows switch preset. Headless screenshots: `msedge --headless=new --disable-gpu --window-size=1600,900 --virtual-time-budget=6000 --screenshot=<file> "http://localhost:8790/preview-harness.html?preset=ridge&warmup=1260"`.
-
-Labs (`node <file>`, read `analysis-dumps/`; none run at playback):
-
-- `music-lab.js "<dump>"` prints the music the way a listener hears it: bars, sections, texture, harmony, fills. `--picture` adds what a preset does beside it (`--preset=<id>`; needs `npm run check` run once for the compiled presets). `--audio-json` writes `shots/<dump>.audio.json` for the harness.
-- `structure-lab.js ["<dump>" "<seconds>"]` runs the structure detector against real tracks and, with labels in `structure-labels.json`, scores it.
-- `rhythm-lab.js` measures `rhythmstring` bands against the beat grid and segment starts.
-- `compression-lab.js` buckets tracks by how hot the master is and counts the moments found in each.
-
-Standalone window (`npm run live`, then `live.html`). `live-app.ts` runs the presets on whatever the computer is playing, in a plain browser window. `live-audio.ts` analyses system audio from `getDisplayMedia` (a screen share with "also share system audio") into the same `TrackAudioData` shape: RMS to loudness curve with a slow auto-gain, spectral-flux onsets as segments, FFT bins folded to pitch classes, the centroid as `timbre[1]`, strong onsets as beats. It has no bars, sections, moments or hits and cannot look ahead, so it trails the sound by about one analysis window (about 85 ms). `npm run live` serves the same dev server as above. Comments in `live-app.ts` still say "eight presets".
+Preview harness (`npm run preview`, then `preview-harness.html`). Renders the presets in a plain browser tab from a synthetic track (`normaliseCurve` applied, no `hits` and no `moments`). Query parameters: `preset`, `warmup` (frames drawn synchronously before showing, since a headless tab cannot be trusted with `requestAnimationFrame`), `at` (the warm-up ends at this second), `fps`, `freeze=1`, `manual=1` (only `drawFramesSync` draws), `audio=<url>` (a `TrackAudioData` as JSON). `warmup=900` lands in the quietest point of the synthetic track; `warmup=1260` is representative. Console helpers: `conducted()`, `diagnostics()`, `drawFramesSync(n)`, `saveShot(name)`. Space pauses, arrows switch preset. Headless screenshots: `msedge --headless=new --disable-gpu --window-size=1600,900 --virtual-time-budget=6000 --screenshot=<file> "http://localhost:8790/preview-harness.html?preset=ridge&warmup=1260"`.

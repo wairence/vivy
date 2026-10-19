@@ -5,49 +5,35 @@ import { currentEnergy, PresetFrame } from "./types";
 
 type Segment = SpotifyAudioAnalysis["segments"][number];
 
-// Where the moments themselves come from is `findImpacts` in audio-data.ts, which reads the
-// loudness envelope rather than the section list. Three attempts at deriving them from `sections`
-// failed on real tracks: a flat 2.5dB threshold never fired at all, scaling it to the track's dB
-// range fired even less because one silent outro defines that range, and ranking the sections
-// finally fired - on the wrong moments, because section boundaries are a segmentation by timbre
-// and are simply not where a chorus starts.
-// fire this far BEFORE the boundary. The visuals were reported as landing slightly late, and there
-// are three lags stacked up: the eased chase, the frame, and the fact that a listener hears the
-// downbeat's attack rather than its notional start. Knowing the future is what makes paying them
-// back possible at all
+// The moments themselves come from `findMoments` in track-structure.ts, which reads the loudness
+// envelope rather than the section list. Deriving them from `sections` does not work on real
+// tracks: a flat 2.5dB threshold never fires, scaling it to the track's dB range fires even less
+// (one silent outro defines that range), and ranking the sections fires on the wrong moments,
+// because section boundaries are a segmentation by timbre and are not where a chorus starts.
+// fire this far before the boundary, to pay back three stacked lags: the eased chase, the frame,
+// and the fact that a listener hears the downbeat's attack rather than its notional start.
+// Knowing the future is what makes paying them back possible at all
 const IMPACT_LEAD_SEC = 0.12;
 // how far ahead to look for one. Beyond this it is not anticipation, it is just knowing the track
 const IMPACT_HORIZON_SEC = 25;
-// how long the brace lasts. Long enough to read as withdrawal, short enough not to be a mood
-// How long the run-in lasts is MEASURED per moment, not fixed - see track-structure.ts. Tracks
-// differ: some build for eight seconds, some cut out for one bar, some simply arrive. A constant
-// dimmed through tracks that were already dimming and dimmed through tracks that were accelerating.
-// The last stretch of whatever that turns out to be is the wind-up, where a fill lives.
-// The drop, as an envelope rather than a bang. Reported, more than once and finally in full: "no
-// run-up, no smoothness, just a dumb explosion" - the design has always been that the field GAINS
-// speed through the approach, reaches its maximum AT the drop, and the brightness swells into it
-// instead of switching on.
-//
-// What was there: `impact` was set to the moment's size on the frame the moment was crossed and
-// eased at 25/s, which is full strength in about forty milliseconds. That is a step, and a step is
-// the one thing this project forbids. The wind-up spanned 0.3 of the run-in - under a second on
-// most tracks - and then fell to zero the instant the moment passed, which is a second step.
-//
-// What is here now: both are shaped from `timeToImpact` directly. The moments are known for the
-// whole track at load, so the envelope can be a function of time rather than a filter chasing a
-// pulse - which also means it is frame-rate independent and peaks exactly where it is aimed
-// (DESIGN-RULES §5b, the rule the star already follows).
+// How long the run-in lasts is measured per moment, not fixed - see track-structure.ts. Tracks
+// differ: some build for eight seconds, some cut out for one bar, some simply arrive. The last
+// stretch of whatever that turns out to be is the wind-up, where a fill lives.
+// The drop is an envelope, not a bang: the field gains speed through the approach, reaches its
+// maximum at the drop, and the brightness swells into it instead of switching on. Both are shaped
+// from `timeToImpact` directly, because a step in either is the one thing this project forbids. The
+// moments are known for the whole track at load, so the envelope can be a function of time rather
+// than a filter chasing a pulse - which also makes it frame-rate independent and peaking exactly
+// where it is aimed.
 // 3t^2-2t^3: zero slope at both ends, so nothing this shapes can start or stop abruptly
 const smoothstep = (t: number) => {
 	const u = Math.max(0, Math.min(1, t));
 	return u * u * (3 - 2 * u);
 };
 // How long the acceleration before a drop lasts: as long as the music's own preparation, and no
-// longer. This used to floor at 3.5s, which overrode the measurement rather than using it - and
-// `leadSeconds` reports the shortest lead-in it can for HALF of all moments across 89 dumps, so
-// half the time the field accelerated for three and a half seconds into music that had prepared
-// for one. Reported on Borderline at 0:19: a moment whose measured run-in is 1.2s and whose build
-// is 0.17, given a 3.5s run-up through a passage quieter than the track's own median.
+// longer. A floor of 3.5s would override the measurement rather than use it, and `leadSeconds`
+// reports the shortest lead-in it can for half of all moments across 89 dumps: the field would
+// accelerate for three and a half seconds into music that had prepared for one.
 // the strength of the narrowest hit worth reporting, so a three-band hit is a real event and an
 // eight-band one is the biggest thing the track has
 const HIT_FLOOR = 0.6;
@@ -57,65 +43,65 @@ const HIT_MATCH = 0.06;
 const WINDUP_SPAN_MIN = 1.2;   // seconds of acceleration before the drop, at least
 const WINDUP_SPAN_MAX = 7;     // and at most - a run-up longer than this stops reading as one
 const WINDUP_HOLD = 1.9;       // speed stays up this long after the drop instead of dropping out
-// BETWEEN TRACKS. A track change takes the analysis away for as long as the next one takes to load,
-// and then hands over a different song at a different level. Measured on Layers 3D before this
-// existed: with no analysis the level followed a fallback sine UP (0.45 -> 0.56 in half a second,
-// louder than the song that had just ended), and on the frame the new analysis arrived it fell to
-// 0.10 - every speed in the picture divided by four in one frame.
+// Between tracks. A track change takes the analysis away for as long as the next one takes to
+// load, and then hands over a different song at a different level. Without handling, the level
+// follows a fallback sine up (0.45 -> 0.56 in half a second, louder than the song that had just
+// ended), and on the frame the new analysis arrives it falls to 0.10 - every speed in the picture
+// divided by four in one frame.
 // the level the picture breathes out to while it waits, and how long it waits before deciding the
 // track has no analysis at all and falling back to the pulse
 const GAP_REST = 0.12;
 const GAP_HOLD = 3;
 // how long the level takes to come round to a new track's own, seconds
 const JOIN_SECONDS = 1.5;
-const IMPACT_RISE = 0.7;       // brightness swells for this long INTO the moment
+const IMPACT_RISE = 0.7;       // brightness swells for this long into the moment
 const IMPACT_FALL = 1.8;       // and falls away over this long after it
 
-// Shared plumbing for the whole Flow Field family - all 7 variants build on the helpers here so the
-// DJ-deck control surface behaves identically across every one and only the *look* (and each
-// preset's own field-generation math/blend style) differs between them.
+// Shared plumbing for the presets: the Conductor turns a frame's audio analysis (and the cursor)
+// into eased signals. The cursor-driven ones (gust*, baton, hand, trailAt, rippleAt, clicked,
+// chaos/order, speedFader, yAttraction) are computed here but not read by Ridgeline or Drift.
 
 export type Conductor = {
 	dt: number;
 	scale: number;
 	energy: number;
-	// The same loudness with the per-segment sawtooth taken out (~0.6s follower).
+	// The same loudness with the per-segment sawtooth taken out (a window a beat and a half wide,
+	// centred on the playhead).
 	//
-	// `energy` is NOT a level. It is the loudness curve, and that curve is an attack-decay ramp per
-	// SEGMENT: measured over 89 dumps it reverses direction 3.8 times a second and any half-second
-	// of it spans 2.0x. Anything that sets a SPEED has to read this instead - speed wired to
+	// `energy` is not a level. It is the loudness curve, and that curve is an attack-decay ramp per
+	// segment: measured over 89 dumps it reverses direction 3.8 times a second and any half-second
+	// of it spans 2.0x. Anything that sets a speed has to read this instead - speed wired to
 	// `energy` accelerates and brakes several times a second, and the eye reads that as the
 	// particles racing rather than as the music being loud. Taking the sawtooth out costs nothing
 	// in dynamics: measured over the same dumps, verse-to-chorus speed stays 1.68x either way,
-	// because a follower keeps the mean and drops only the ripple.
+	// because smoothing keeps the mean and drops only the ripple.
 	//
 	// Brightness, line width and spawn rate may still read `energy` directly - a step in light is a
-	// hit, a step in motion is a fault (DESIGN-RULES §1).
+	// hit, a step in motion is a fault.
 	loudness: number;
 	// loudness-driven accumulator: fast attack, slow release, nudged by beats where they exist
 	momentum: number;
-	// smoothed brightness/line-width driver - audio only, never gestures
+	// smoothed brightness/line-width driver
 	glow: number;
 	// a fast, short-lived spike on an actual beat (or a smaller one on a segment change) - momentum's
 	// slow release is deliberate for the ambient mood, but on its own it smears consecutive hits into
 	// one continuous blur. This is the crisp "you can see the beat" layer on top of it: ~30ms attack,
 	// ~120ms decay, so distinct hits stay visually distinct
 	pop: number;
-	// how strong the last beat was METRICALLY, not how loud: 1 on a beat that starts a bar, ~0.45 on
-	// one that does not. From `bars`, which the analysis has always sent and which this project spent
-	// its whole life discarding. Note this is a property of the beat, not a continuous signal - it
+	// how strong the last beat was metrically, not how loud: 1 on a beat that starts a bar, ~0.45 on
+	// one that does not. From `bars`.
+	// Note this is a property of the beat, not a continuous signal - it
 	// holds its value until the next beat rather than easing
 	beatStrength: number;
-	// seconds until the next section that is meaningfully louder than this one, or null when there
-	// is no such thing coming. THE ONLY SIGNAL IN THE PROJECT THAT LOOKS FORWARD - everything else
-	// describes now or the recent past. ARCHITECTURE §1 claims the motion can anticipate rather than
-	// react; until this existed, nothing did
+	// seconds until the next moment (see track-structure.ts), or null when there is none within the
+	// horizon. With `lookAhead`, one of the two signals that look forward - everything else
+	// describes now or the recent past
 	timeToImpact: number | null;
 	// 0..1, rising over the last few seconds before that boundary and released at it. Use it to pull
 	// back - contract, dim, slow - so the boundary lands on something that had made room for it
 	anticipation: number;
 	// how far the music itself thins out on the way in, 0..1, and how much it climbs. Both measured
-	// from this track rather than assumed. Read them to choose the GESTURE: follow the music down
+	// from this track rather than assumed. Read them to choose the gesture: follow the music down
 	// when it drops out, wind up with it when it builds, and do very little when it just arrives
 	runInDip: number;
 	runInBuild: number;
@@ -125,41 +111,40 @@ export type Conductor = {
 	// brace, so the picture winds up in the dark and the release is still the first thing that
 	// actually lights
 	windup: number;
-	// A real transient in the audio: a segment that begins with a fast attack AND arrives louder
-	// than the segments around it. 0 on every other frame, 0..1 on the frame it happens.
+	// A real transient in the audio: from the audio's own onsets where the track has them, else a
+	// segment that begins with a fast attack and arrives louder than the segments around it. 0 on
+	// every other frame, 0..1 on the frame it happens.
 	//
-	// This is what a HIT is, as opposed to what a BEAT is. Beats come from a tempo grid the tracker
+	// This is what a hit is, as opposed to what a beat is. Beats come from a tempo grid the tracker
 	// fits over the track, which on music that does not keep a regular metre - math rock, odd time,
 	// rubato - is a regular pulse laid over an irregular piece, and firing percussion from it looks
 	// exactly as wrong as that sounds. Segments are timbral events measured from the audio itself
 	// and follow the music whatever it does with its bar lines. On ordinary music the two coincide,
 	// because a kick makes a sharp segment.
 	strike: number;
-	// The hit that has NOT HAPPENED YET, if one is due within `seconds`. Returns how far off it is
+	// The hit that has not happened yet, if one is due within `seconds`. Returns how far off it is
 	// and how hard it will be.
 	//
-	// An eye reads an event at its PEAK, not at its onset. Anything whose response takes time to
-	// reach full strength therefore has to be started BEFORE the hit, or its peak lands after it and
-	// the whole thing feels late - which is what "late" has meant every single time it was reported
-	// in this project. The star's rise alone is 0.4s of lateness.
+	// An event is read at its peak, not at its onset. Anything whose response takes time to reach
+	// full strength therefore has to be started before the hit, or its peak lands after it and the
+	// whole thing feels late. The star's rise alone is 0.4s of lateness.
 	//
-	// This is possible at all only because the analysis is a timeline rather than a stream: the
-	// segments after the playhead are already in memory, with their loudness and their attack. It is
-	// the first thing here to actually use that, and it is what ARCHITECTURE §1 has always claimed.
+	// This is possible only because the analysis is a timeline rather than a stream: the segments
+	// after the playhead are already in memory, with their loudness and their attack.
 	lookAhead: (seconds: number) => { inSeconds: number; power: number; sharpness: number; downbeat: boolean } | null;
-	// fires ON the boundary, scaled by how much louder the new section actually is. Bigger and rarer
-	// than `pop`, which fires on every beat
+	// swells into a moment and peaks on it, scaled by the moment's size. Bigger and rarer than
+	// `pop`, which fires on every beat
 	impact: number;
 	// how big the part of the song currently playing is, as its rank among this track's own
 	// sections: 0 is its quietest passage, 1 its biggest. Eased, so a boundary is a slope rather
 	// than a step. Read this to spend a budget on the chorus - particles, size, brightness - instead
 	// of spreading it evenly over a track that is not evenly interesting. 0.5 with no sections
 	sectionIntensity: number;
-	// down-flick -> chaos, up-flick -> order. Both eased, both global (the field's mood), and both
+	// cursor: down-flick -> chaos, up-flick -> order. Both eased, both global (the field's mood), and both
 	// decay back to neutral within a second or so - a single flick's instant response
 	chaos: number;
 	order: number;
-	// chaos/order INCLUDING a slow-decaying baseline that repeated flicking builds up over tens of
+	// chaos/order including a slow-decaying baseline that repeated flicking builds up over tens of
 	// seconds and that fades back out over roughly a minute - so conducting for a while actually
 	// leaves the piece changed for a while, the way real conducting shapes a performance's arc,
 	// rather than a gesture's effect fully evaporating the instant the flick ends. Structural/visual
@@ -175,60 +160,49 @@ export type Conductor = {
 	// a slow (~2 minute period), audio- and gesture-independent wander - purely so a preset never
 	// sits at one fixed structural resting point for the length of a whole song
 	wander: number;
-	// direction the cursor is actually moving in right now, and how hard - both eased
+	// cursor: the direction it is actually moving in right now, and how hard - both eased
 	gustAngle: number;
 	gustStrength: number;
-	// how CONSISTENT that direction has actually been, 0..1 - gustAngle/gustStrength alone can't
-	// tell a real swipe from fast erratic wiggling (dancing to the music), since both are "moving
-	// fast". This is the magnitude of the eased direction vector before it gets collapsed into just
-	// an angle: a steady direction keeps it near 1, a direction that keeps changing (circles, random
-	// motion) partially cancels itself out and drags it toward 0. Use this to gate anything that
-	// should only respond to a real deliberate gesture, not to "the cursor is moving fast" alone
+	// how consistent that direction has been, 0..1 - gustAngle/gustStrength alone can't tell a real
+	// swipe from fast erratic wiggling. This is the magnitude of the eased direction vector before it
+	// is collapsed into an angle: a steady direction keeps it near 1, a direction that keeps
+	// changing partially cancels itself out and drags it toward 0
 	gustCoherence: number;
-	// brief flash on click, decays fast. Clicks never touch speed
-	// true on exactly the frame a click was registered - trigger one-shot effects (a ripple) off this
-	// ---- THE BATON --------------------------------------------------------------------------
-	// The only shape input is allowed to take in this project: a MAGNITUDE. No position in it, no
-	// direction in it, and nothing local - the same number everywhere on the picture.
+	// ---- the baton (cursor) ---------------------------------------------------------------------
+	// The only shape input may take: a magnitude. No position in it, no direction in it, and
+	// nothing local - the same number everywhere on the picture. Raw input setting direction fails
+	// because input is on a different clock: a hand moves on human whim, the picture moves on the
+	// music, and anything that lets the first into the geometry writes a discontinuity there is
+	// nothing to smooth against.
 	//
-	// Five attempts at gesture failed before this and DESIGN-RULES §1 records them all as one root
-	// cause: raw input setting direction. The cause under that one is that INPUT IS ON A DIFFERENT
-	// CLOCK. A hand moves on human whim, the picture moves on the music, and anything that lets the
-	// first into the geometry writes a discontinuity there is nothing to smooth against.
-	//
-	// A conductor does not make the sound. The score is written and the orchestra knows it; the
-	// conductor decides how widely it is played. So this measures HOW LARGE THE GESTURE IS, in units
-	// of the picture crossed per bar of this track, and it is eased on the music's clock - a flick
-	// arrives as a swell over a bar, never as a step.
-	//
-	// Both are 0 with the pointer at rest, and at 0 every preset behaves exactly as it did before
-	// this existed. Conducting is an addition, never a mechanism something depends on.
-	/** the gesture, over a BAR - the slow, structural read. 0..1 */
+	// So this measures how large the gesture is, in units of the picture crossed per bar of this
+	// track, and it is eased on the music's clock - a flick arrives as a swell over a bar, never as
+	// a step. Both are 0 with the pointer at rest.
+	/** the gesture, over a bar - the slow, structural read. 0..1 */
 	baton: number;
-	/** the same gesture over a BEAT - the quick read, so the two channels it drives cannot fuse */
+	/** the same gesture over a beat - the quick read, so the two channels it drives cannot fuse */
 	hand: number;
 	/**
 	 * How brightly the pointer's recent path passes through (x, y), 0..1 - the trace it leaves
 	 * behind it as it moves.
 	 *
-	 * This is the one narrow place DESIGN-RULES §2 allows a gesture into brightness, and it is built
-	 * to its terms: it LIGHTS A PARTICLE THAT IS ALREADY THERE and never draws a shape of its own,
-	 * so there is nothing to see where there is nothing already. It is a PATH, not a disc around the
-	 * cursor - a resting pointer's mark decays to nothing within a beat, which is what stops it
-	 * becoming the lightbulb that shipped once before. And it is bounded small at the source.
+	 * It lights a particle that is already there and never draws a shape of its own, so there is
+	 * nothing to see where there is nothing already. It is a path, not a disc around the cursor - a
+	 * resting pointer's mark decays to nothing within a beat - and it is bounded small at the source.
 	 *
 	 * Light only. It must never reach an angle or a speed: the trail is sampled from raw pointer
-	 * position, which is the exact thing §1b forbids in geometry.
+	 * position, which must not enter the geometry.
 	 */
 	trailAt: (x: number, y: number) => number;
 	/**
 	 * A click, as a glow where it landed and a ring spreading out of it, 0..1 at (x, y).
 	 *
-	 * Light and turbulence only, never speed: the ring is a NARROW band, and it crosses a stationary
-	 * particle in about fifty milliseconds. Brightness is allowed to move that fast (§1b); a stroke
-	 * length is not, and speed times the frame is stroke length.
+	 * Light and turbulence only, never speed: the ring is a narrow band, and it crosses a stationary
+	 * particle in about fifty milliseconds. Brightness may move that fast; a stroke length may not,
+	 * and speed times the frame is stroke length.
 	 */
 	rippleAt: (x: number, y: number) => number;
+	// true on exactly the frame a click was registered - trigger one-shot effects (a ripple) off this
 	clicked: boolean;
 	// same, right mouse button - a different one-shot gesture
 	rightClicked: boolean;
@@ -239,7 +213,7 @@ export type Conductor = {
 	yAttraction: number;
 	// eased timbre[1] (spectral brightness), 0..1
 	brightness: number;
-	// how percussive the CURRENT segment's own attack is, 0..1 - from loudness_max_time (how long the
+	// how percussive the current segment's own attack is, 0..1 - from loudness_max_time (how long the
 	// segment took to reach its peak): a fast rise (a drum hit, a pluck) reads as sharp, a slow swell
 	// (a pad, a bowed note, a held vocal) reads as soft. Real per-segment data, not invented - updates
 	// once per segment, eased between values so it doesn't snap
@@ -247,15 +221,13 @@ export type Conductor = {
 	// a fast, short-lived pulse (same envelope shape as pop) that fires when the harmony actually
 	// moves - the cosine distance between this segment's 12-band chroma and the previous segment's.
 	// A held chord stays near zero; an actual chord change or key shift spikes it. Distinct from pop
-	// (which fires on ANY beat/segment regardless of harmonic content) and from Chroma Bloom's own
-	// key-change detector (which needs a sustained new leader, not a single segment's motion) - this
-	// is available to every preset, not just that one
+	// (which fires on any beat/segment regardless of harmonic content)
 	harmonicShift: number;
 	segment: Segment | null;
 	beatHit: boolean;
 };
 
-// All the eased gesture/audio state every Flow Field variant needs, updated once per frame.
+// All the eased gesture/audio state the presets need, updated once per frame.
 // Call this only on frames that actually render - a paused frame must not advance any of it.
 export function createConductor() {
 	let lastTime: number | null = null;
@@ -330,7 +302,7 @@ export function createConductor() {
 		lastTime = progressSec;
 		const scale = Math.min(width, height);
 
-		// ---- THE BATON ---------------------------------------------------------------------------
+		// ---- the baton ---------------------------------------------------------------------------
 		const beatSec = audio && audio.tempo > 40 ? 60 / audio.tempo : 0.5;
 		const barSec = beatSec * 4;
 		if (batonPrevX === null || batonPrevY === null) {
@@ -340,17 +312,16 @@ export function createConductor() {
 		const moved = Math.hypot(mouse.x - batonPrevX, mouse.y - batonPrevY);
 		batonPrevX = mouse.x;
 		batonPrevY = mouse.y;
-		// HOW FAST THE HAND IS MOVING RIGHT NOW, against a rate of twice the picture's short side per
+		// How fast the hand is moving right now, against a rate of twice the picture's short side per
 		// bar of this track. A real unit rather than a number: it holds at any window size and tempo.
 		//
-		// It used to be distance ACCUMULATED over a bar and then eased over another one, which is two
-		// bars of lag on the answer to your own hand, and it read as dead. That design came out of
-		// over-applying §1b: geometry may not step, so I made the input wait for the music. The two do
-		// not follow from each other. A ramp that begins on the frame of the movement and takes eighty
-		// milliseconds to get there is INSTANT to a hand and CONTINUOUS to a trail - there is no
-		// discontinuity anywhere in it. The rule was never about latency; it was about direction.
+		// Distance accumulated over a bar and then eased over another would be two bars of lag on the
+		// answer to the hand, and read as dead. Geometry may not step, but that does not make input
+		// wait for the music: a ramp that begins on the frame of the movement and takes eighty
+		// milliseconds to get there is instant to a hand and continuous to a trail, with no
+		// discontinuity anywhere in it. The rule is about direction, not latency.
 		const swept = dt > 0 ? Math.min(1, moved / dt / ((scale * 2) / barSec)) : 0;
-		// UP IN EIGHTY MILLISECONDS, DOWN ON THE MUSIC'S CLOCK. The asymmetry is the whole point: the
+		// Up in eighty milliseconds, down on the music's clock. The asymmetry is the whole point: the
 		// picture answers the hand at once and lets go over a bar, so a flick swells and settles rather
 		// than blinking. Two falls off one rise on purpose - a bar and a beat are far enough apart that
 		// the channels they drive stay separate things instead of one knob pushed twice.
@@ -358,27 +329,24 @@ export function createConductor() {
 		baton += (swept - baton) * Math.min(1, (swept > baton ? grab : 1 / barSec) * dt);
 		hand += (swept - hand) * Math.min(1, (swept > hand ? grab : 1 / beatSec) * dt);
 
-		// ---- THE TRACE THE POINTER LEAVES ----------------------------------------------------------
-		// Points are laid down BY DISTANCE, not by frame, so a slow hand and a fast one leave the same
-		// ribbon rather than the slow one leaving a dense clot - which is how a per-frame sample would
-		// concentrate exactly where the pointer lingers, and lingering is where the lightbulb came from.
+		// ---- the trace the pointer leaves ----------------------------------------------------------
+		// Points are laid down by distance, not by frame, so a slow hand and a fast one leave the same
+		// ribbon rather than the slow one leaving a dense clot - a per-frame sample would concentrate
+		// exactly where the pointer lingers, which is a bright spot under a resting pointer.
 		trailClock += dt;
 		const trailLife = beatSec * 1.2;
-		// TEN TIMES THE AREA. At 0.055 the hand's reach was a 56 px wire across a 1024 px picture - it
-		// touched five to thirteen strokes out of four hundred, and measured 1.2-4.2% of the light the
-		// ground was emitting. DESIGN-RULES §12 already fixed what that means: in the sensitivity sweep
-		// that condemned the old Layers, twenty-five of its signals measured under 7% each and that was
-		// the evidence they never reached the screen. Conducting was sitting under the project's own
-		// threshold for invisible. Local was right; local and tiny was not.
+		// A reach of 0.17 of the short side, ten times the area of 0.055: at that size the hand touched
+		// five to thirteen strokes out of four hundred and measured 1.2-4.2% of the light the ground
+		// was emitting, which is invisible. Local is right; local and tiny is not.
 		const trailRadius = scale * 0.17;
 		// eight points across the radius whatever the radius is, so the sum below does not have to be
 		// renormalised every time the reach changes
 		const trailStep = trailRadius / 8;
-		// Against the LAST PLACE A POINT WAS LAID, which outlives the trail itself. Reading the head of
-		// the buffer instead meant that once the ribbon had aged out from under a resting pointer the
-		// buffer was empty, a fresh point went down at full strength, faded over its beat and a bit,
-		// and the whole thing repeated - a spot switching on and off under a hand that was not moving,
-		// on the beat. That is the lightbulb of DESIGN-RULES §2 with a metronome attached.
+		// Spacing is measured from the last place a point was laid, which outlives the trail itself.
+		// Read from the head of the buffer instead, once the ribbon had aged out from under a resting
+		// pointer the buffer would be empty, a fresh point would go down at full strength, fade over
+		// its beat and a bit, and the whole thing would repeat - a spot switching on and off on the
+		// beat under a hand that is not moving.
 		if (laidX === null || laidY === null) {
 			laidX = mouse.x;
 			laidY = mouse.y;
@@ -395,7 +363,7 @@ export function createConductor() {
 		}
 		while (trail.length > 0 && trailClock - trail[0].born > trailLife) trail.shift();
 		if (trail.length > 96) trail.shift();
-		// ---- A CLICK, AS A GLOW AND A RING ---------------------------------------------------------
+		// ---- a click, as a glow and a ring ---------------------------------------------------------
 		// Both halves are measured in the music's own units: the ring crosses the short side of the
 		// picture in a beat and a half and the whole thing is gone in a bar, so a click on a slow
 		// track spreads slowly and on a fast one quickly. Nothing here is in seconds.
@@ -419,7 +387,7 @@ export function createConductor() {
 					const g = 1 - d / glowR;
 					sum += g * g * Math.max(0, 1 - age / beatSec);
 				}
-				// the ring: the band WIDENS as it travels, which is both what a real ripple does and what
+				// the ring: the band widens as it travels, which is both what a real ripple does and what
 				// keeps it from turning into a hard edge once it is large
 				const r = ringSpeed * age;
 				const band = scale * 0.045 + r * 0.22;
@@ -454,17 +422,16 @@ export function createConductor() {
 			curveMedian = ys.length > 0 ? ys[ys.length >> 1] : 0.4;
 		}
 		let energy = currentEnergy(frame);
-		// A CENTRED WINDOW, not a follower - and measured in BEATS of this track, not in seconds.
+		// A centred window, not a follower - and measured in beats of this track, not in seconds.
 		//
-		// A follower is by definition late by its own time constant, and it showed: reported as "the
-		// melody accelerates late at the drop", and on 一緒なら the melody's own speed peaked 2.9s
-		// after it. The speeds read this, so everything the field does was arriving a follower's
-		// worth behind the music.
+		// A follower is by definition late by its own time constant: on one track the melody's speed
+		// peaked 2.9s after the drop. The speeds read this, so everything the field does would arrive a
+		// follower's worth behind the music.
 		//
-		// The lag is avoidable, and only here: the analysis is a TIMELINE, so the loudness half a
+		// The lag is avoidable, and only here: the analysis is a timeline, so the loudness half a
 		// second from now is already known. Averaging symmetrically about the playhead removes the
 		// delay completely while smoothing the per-segment sawtooth exactly as before. This is the
-		// same licence peak alignment uses (DESIGN-RULES §5b), applied to a level instead of an event.
+		// same licence peak alignment uses, applied to a level instead of an event.
 		//
 		// A beat and a half wide, because a bar is where "how loud is this passage" stops being about
 		// the passage - and a fraction of a beat is the same musical thing on a fast track and a slow
@@ -474,7 +441,7 @@ export function createConductor() {
 			let sum = 0;
 			for (let k = -3; k <= 3; k++) sum += sampleCurve(audio.loudnessCurve, progressSec + (half * k) / 3);
 			// a new track is joined over a second and a half, level and light together, from wherever
-			// the picture was - never assigned (see BETWEEN TRACKS)
+			// the picture was - never assigned (see Between tracks)
 			if (audio.loudnessCurve !== joinedCurve) {
 				joinedCurve = audio.loudnessCurve;
 				join = 0;
@@ -542,28 +509,27 @@ export function createConductor() {
 			}
 			prevPitches = segment.pitches;
 		}
-		// ---- a HIT ---------------------------------------------------------------------------------
+		// ---- a hit ---------------------------------------------------------------------------------
 		// From the audio's own onsets, where the track has them: `rhythmstring` decoded to eight
 		// bands, and a hit is where at least three of them fire together (see rhythm.ts for the
 		// format and for why a single band cannot be one). Measured against the beat grid over 81
 		// tracks this is better than the segment rule on every axis at the same rate - 44% precision
 		// against 28%, 63% beat recall against 51%, 61% downbeat recall against 46%.
 		//
-		// The COUNT is the strength, and that is measured too: across 316k hits, 3 bands land on a
+		// The count is the strength, and that is measured too: across 316k hits, 3 bands land on a
 		// beat 34% of the time and 8 bands 64%, rising monotonically. Breadth is how much of a hit
-		// it was. How LOUD it was is a different measurement and stays where it was, in the segment
+		// it was. How loud it was is a different measurement, in the segment
 		// amplitude the preset reads separately.
 		strike = 0;
 		const hits = audio?.hits;
 		if (hits && hits.length > 0 && segmentHit && segment) {
-			// ON THE SEGMENT CLOCK, filtered by the bands - not on a clock of its own. Fired directly
-			// off the onsets this was a measurably BETTER detector and a measurably WORSE picture:
-			// the visible light landed on the beat 24% of the time against 41% before, on Harmonious.
-			// Everything else in the visual - the loudness curve, the attack character, the harmonic
-			// movement - is built from segments, so an event stream on a second clock puts the flash
-			// between the frames where the rest of the picture is already moving, and the two smear
-			// each other. One clock. The onsets say WHICH segments are hits, which is the thing the
-			// segments themselves cannot tell us.
+			// On the segment clock, filtered by the bands - not on a clock of its own. Fired directly
+			// off the onsets it is a measurably better detector and a measurably worse picture: the
+			// visible light lands on the beat 24% of the time against 41%. Everything else in the
+			// visual - the loudness curve, the attack character, the harmonic movement - is built from
+			// segments, so an event stream on a second clock puts the flash between the frames where
+			// the rest of the picture is already moving, and the two smear each other. One clock. The
+			// onsets say which segments are hits, which the segments themselves cannot tell us.
 			if (lastHitScan === null || progressSec < lastHitScan || progressSec - lastHitScan > 0.5)
 				hitCursor = Math.max(0, hitIndexAt(hits, progressSec - HIT_MATCH));
 			lastHitScan = progressSec;
@@ -648,7 +614,7 @@ export function createConductor() {
 		// arrives with the downbeat instead of after it
 		const lookAt = progressSec + IMPACT_LEAD_SEC;
 		const sectionIndex = sectionIndexAt(sections, lookAt);
-		// The moments come from the loudness envelope, not from section boundaries - see findImpacts.
+		// The moments come from the loudness envelope, not from section boundaries - see findMoments.
 		// There are at most a dozen per track, so a plain scan costs nothing.
 		const moments = audio?.moments ?? [];
 		let timeToImpact: number | null = null;
@@ -682,11 +648,11 @@ export function createConductor() {
 		const intensityTarget = sectionIndex >= 0 && ranks.length > 0 ? (ranks[sectionIndex] ?? 0.5) : 0.5;
 		// ~7s, not 0.6s. Section boundaries are a timbral segmentation, not musical events, and at
 		// 0.6s a boundary arrived as a visible step in speed and brightness - an event manufactured
-		// where the music has none. Exactly the mistake `surge` made, through a different door: a
-		// signal describing slow context has to move slower than the events it sits underneath.
+		// where the music has none. A signal describing slow context has to move slower than the
+		// events it sits underneath.
 		sectionIntensity += (intensityTarget - sectionIntensity) * Math.min(1, 0.14 * dt);
 
-		// The release, as a shape in time. Rises for IMPACT_RISE seconds INTO the moment so its peak
+		// The release, as a shape in time. Rises for IMPACT_RISE seconds into the moment so its peak
 		// lands on the moment rather than starting there, then falls away over IMPACT_FALL. Both
 		// halves are curves; there is no instant anywhere in it.
 		const impactBefore =
@@ -700,7 +666,7 @@ export function createConductor() {
 		impact = Math.max(impactBefore, impactAfter);
 
 		// eased in both directions - the release at the boundary is fast but it is still a curve,
-		// never a step (DESIGN-RULES §5). Squared-ish approach so the pull-back is barely there at
+		// never a step. Squared-ish approach so the pull-back is barely there at
 		// four seconds out and unmistakable in the last one
 		const anticipationTarget =
 			timeToImpact !== null && timeToImpact < leadSeconds
@@ -711,35 +677,34 @@ export function createConductor() {
 
 		// The acceleration. Spans most of the run-in rather than a third of it, and is shaped so it
 		// builds gently at first and hardest in the last second - a run-up whose rate is constant
-		// reads as the field simply moving faster, not as something being wound up. Peaks AT the
+		// reads as the field simply moving faster, not as something being wound up. Peaks at the
 		// moment, then holds and releases over WINDUP_HOLD, because falling to zero the instant the
-		// drop lands is the same step the release used to have, in the other channel.
+		// drop lands would be a step, in the other channel.
 		const windupSpan = Math.max(WINDUP_SPAN_MIN, Math.min(WINDUP_SPAN_MAX, leadSeconds));
-		// Gated by how loud the music ACTUALLY IS right now, and this is the correction that matters.
+		// Gated by how loud the music actually is on the way in.
 		//
-		// The wind-up was a function of the time to the moment and the moment's SIZE - the
-		// destination - and read nothing about the present. Measured over 311 run-ins that is not
-		// merely deaf, it is INVERTED: r = -0.30 between the energy during a run-in and the speed the
-		// run-in reaches. A moment is big in `findRises` precisely because the stretch before it was
-		// quiet (the rise is proportional), so size correlates with silence, and speed followed size.
-		// The quietest run-ins measured got 2.25x while the loudest got 1.22x - the field sprinting
-		// through near-silence and crawling through a riser, which is exactly backwards.
+		// A wind-up that is a function of the time to the moment and the moment's size - the
+		// destination - reads nothing about the present, and comes out inverted: over 311 run-ins,
+		// r = -0.30 between the energy during a run-in and the speed the run-in reaches. A moment is
+		// big in `findRises` precisely because the stretch before it was quiet (the rise is
+		// proportional), so size correlates with silence, and speed follows size. The quietest
+		// run-ins measured got 2.25x while the loudest got 1.22x: the field sprinting through
+		// near-silence and crawling through a riser, exactly backwards.
 		//
 		// Speed reads as loudness. A viewer takes motion for energy, so accelerating through a quiet
-		// passage says "loud" while the music says "quiet", and no amount of tuning the curve fixes a
-		// statement that contradicts the sound. The run-up survives; its ceiling is now the level of
-		// the music carrying it.
-		// Measured over the APPROACH, not the present frame, and this distinction is the whole fix.
-		// The wind-up peaks AT the moment, where the music is already loud, so gating on instantaneous
-		// energy leaves the two seconds actually being looked at completely untouched - it moved the
-		// correlation from -0.30 to -0.29. A two-second follower still reflects the run-in at the
-		// instant the drop lands, which is the question being asked: how loud has it been on the way
-		// in, not how loud is it now.
-		// RELATIVE TO THIS TRACK, not to 0.28. The point of this gate is "do not wind up through a
-		// passage that is quiet", and quiet is a per-track word: the loudness curve is normalised per
-		// track, and its median sits around 0.35-0.46, so a fixed 0.28 was above the whole
-		// distribution on some tracks and below it on others - the ceiling-through-the-distribution
-		// fault of DESIGN-RULES 3b, in a gate rather than in a colour. Against the track's own typical
+		// passage says "loud" while the music says "quiet", and no tuning of the curve fixes a
+		// statement that contradicts the sound. The run-up survives; its ceiling is the level of the
+		// music carrying it.
+		//
+		// Measured over the approach, not the present frame. The wind-up peaks at the moment, where
+		// the music is already loud, so gating on instantaneous energy leaves the two seconds
+		// actually being looked at untouched (the correlation moves from -0.30 to -0.29). A
+		// two-second follower still reflects the run-in at the instant the drop lands, which is the
+		// question: how loud has it been on the way in, not how loud is it now.
+		//
+		// Relative to this track, not to a fixed 0.28. Quiet is a per-track word: the loudness curve
+		// is normalised per track and its median sits around 0.35-0.46, so a fixed 0.28 is above the
+		// whole distribution on some tracks and below it on others. Against the track's own typical
 		// level it means the same thing on every track.
 		const windupAllowance = Math.min(1, approachEnergy / Math.max(0.08, curveMedian * 0.75));
 		const windupBefore =
@@ -772,16 +737,16 @@ export function createConductor() {
 			}
 			const next = list[lo];
 			if (!next || next.start <= progressSec || next.start - progressSec > seconds) return null;
-			// whether the hit that is COMING lands on a bar line. `beatStrength` describes the last
+			// whether the hit that is coming lands on a bar line. `beatStrength` describes the last
 			// beat, which is the wrong question when the whole point is to act before the next one
 			const near = nearestBarStart(audio?.bars ?? [], next.start);
 			return {
-				// to the segment's PEAK, not to its start. Aligning an event by peak is the whole
+				// to the segment's peak, not to its start. Aligning an event by peak is the whole
 				// point of looking ahead, and a segment's loudest instant is `loudness_max_time`
 				// into it - up to a tenth of a second of lateness that no amount of tuning downstream
 				// could have removed
 				inSeconds: next.start + next.loudness_max_time - progressSec,
-				// against the track's own big hits, and NOT clamped. Both halves matter: a fixed x1.8 on
+				// against the track's own big hits, and not clamped. Both halves matter: a fixed x1.8 on
 				// Spotify's absolute scale saturates for most of a loud master, and a clamp at 1 makes
 				// every hit in a chorus compare equal - which silently disables anything built on "was
 				// that bigger than the last one"
@@ -839,29 +804,27 @@ export function createConductor() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Two tools for looking rather than for guessing. Neither is read by the render path.
+// Two debugging aids. Neither is read by the render path.
 
-// The last frame's conductor, so the "this looks wrong" marker can record what the machine
-// believed at the moment the eye disagreed with it. Twenty marks are a dataset; a description of
-// what should have happened is a guess, and the descriptions have not worked.
+// The last frame's conductor, so the dev-build marker (B in the client) can record the signals at
+// the moment it was pressed.
 export let lastConducted: Conductor | null = null;
 
-// WHAT A SIMULATION BELIEVES ABOUT ITSELF, for the headless check to assert on.
+// What a simulation reports about itself, for the headless check to assert on.
 //
 // A preset that draws strokes is fully checked by the fake canvas: every number it hands over is
-// seen. A preset that draws PIXELS is not - a Uint8ClampedArray turns a NaN into 0 on the way in,
+// seen. A preset that draws pixels is not - a Uint8ClampedArray turns a NaN into 0 on the way in,
 // so by the time a bad value reaches an ImageData the evidence has been destroyed. Any preset with
-// state that is not visible in its draw calls (a fluid's velocity field, a plate's mode
-// amplitudes) publishes it here once a frame, and `check-presets.js` asserts every number in it is
-// finite and within the range the preset declares.
+// state that is not visible in its draw calls (a camera, a simulation) publishes it here once a
+// frame, and `check-presets.js` asserts every number in it is finite and within the range the
+// preset declares.
 export let lastDiagnostics: { label: string; values: Record<string, number> } | null = null;
 export function publishDiagnostics(label: string, values: Record<string, number>): void {
 	lastDiagnostics = { label, values };
 }
 
-// Live A/B. A preset reads this to pick between parameter sets, and the hotkey cycles it while the
-// music plays - so a comparison is one keypress on the same passage instead of a rebuild, a
-// restart, and a memory of what the other one looked like a minute ago.
+// A parameter-set index for A/B comparison, set by the preview harness (?variant=, key V). Neither
+// current preset reads it.
 let variant = 0;
 export function getVariant(): number {
 	return variant;
@@ -891,7 +854,7 @@ export function rgbToHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl 
 }
 
 // the extracted album colour as HSL, with saturation/lightness pulled into a usable band so a
-// near-grey or near-black cover doesn't collapse the hue-shifting variants into mud
+// near-grey or near-black cover doesn't collapse into mud (unused by the current presets)
 export function albumHsl(rgb: { r: number; g: number; b: number }): Hsl {
 	const { h, s, l } = rgbToHsl(rgb);
 	return { h, s: Math.max(0.45, Math.min(0.95, s)), l: Math.max(0.45, Math.min(0.66, l)) };

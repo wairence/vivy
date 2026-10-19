@@ -1,14 +1,15 @@
 // Ridgeline. A waveform, but of the thing this project actually has: not the samples - Spotify does
 // not hand those out - but the whole song as a timeline, the part that has not been played yet
-// included. So the picture is the song as a TERRAIN flying at the viewer:
+// included. So the picture is the song as a terrain flying at the viewer:
 //
 //   a row        the song at one moment. Its height is the loudness then, and its shape is the
 //                harmony then - twelve pitch classes laid across in fifths, so the notes of a
 //                chord stand next to each other and make one mountain rather than three spikes.
 //                A sharp sound makes a jagged ridge, a soft one a smooth one. A row stands
-//                where a SOUND begins, so it crosses "now" as that sound is heard, and the
-//                stronger the onset the heavier the row (8; off, they sit on the beat grid).
-//   the depth    time. The far rows are the FUTURE and they come towards you; a drop is a wall of
+//                where a sound begins, so it crosses "now" as that sound is heard, and the
+//                stronger the onset the heavier the row (rows on accents; off, they sit on
+//                the beat grid).
+//   the depth    time. The far rows are the future and they come towards you; a drop is a wall of
 //                mountains you can watch arriving for sixteen beats.
 //   the line     the bright one, at "now": the terrain's cross-section under the playhead. This is
 //                the waveform. It never steps - it is eased towards the section it is crossing.
@@ -18,10 +19,10 @@
 //                throws it further.
 //   behind you   what has been played sinks and goes out.
 //
-// On top of that base, eight things that can each be switched off (keys 1-8 in the client, FEATURES
+// On top of that base, seven things that can each be switched off (keys 1-7 in the client, FEATURES
 // below) - each is one block in draw() and says there what it is and what it must not do.
 //
-// It is the ridgeline plot (the pulsar chart on the cover of Unknown Pleasures): rows drawn far to
+// It is the ridgeline plot (the "pulsar" chart): rows drawn far to
 // near, each filled under its line so it hides what is behind it. Plain 2D canvas, and the whole
 // picture is redrawn every frame, so it may be glowed whole.
 import { createNoise2D } from "simplex-noise";
@@ -60,7 +61,7 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
 const FUTURE_BEATS = 6.34;
 const PAST_BEATS = 1.42;
 const ROWS_PER_BEAT = 2;
-// ROWS ON ACCENTS: no two rows nearer than this, and no stretch of ground longer than this without
+// Rows on accents: no two rows nearer than this, and no stretch of ground longer than this without
 // one, in beats. Measured over eight tracks, the analysis has 0.8 to 2.9 sounds a beat - about what
 // the grid had - but up to five beats between two of them, which without a row is a hole.
 const ROW_GAP_MIN = 0.09037;
@@ -76,7 +77,7 @@ const GROUND = 0.6375;
 // front rows run off both sides)
 const RIDGE = 0.34;
 const HALF_WIDTH = 0.834;
-// THE CAMERA's height, as a multiple of the ground's drop: over the quietest passages and the loudest.
+// The camera's height, as a multiple of the ground's drop: over the quietest passages and the loudest.
 // Mapped onto what the level actually does, measured over eight tracks - it sits between 0.16 and
 // 0.46 (5th to 95th percentile), and written against 0..1 the camera used a third of its travel. The
 // crouch is full when the next twelve beats are 0.15 louder than the last few seconds, which is the
@@ -115,7 +116,7 @@ const ECHO_MAX = 12;
 // how many specks of dust are in the air
 const DUST = 70;
 // live knobs (T in the client): every one starts at the constant above and is read each frame
-// THE GLOW ON THE HORIZON: how high it reaches above the far edge (of the picture's height), how far
+// The glow on the horizon: how high it reaches above the far edge (of the picture's height), how far
 // to the sides (of its width), and how bright it is at its middle
 const SKY_HEIGHT = 0.2252;
 const SKY_WIDTH = 1.146;
@@ -315,11 +316,11 @@ function create(): Preset {
 	};
 
 	// ---- the grid: where the rows are ----------------------------------------------------------------------
-	// 8. ROWS ON ACCENTS. A row stands where a sound begins - every segment of the analysis - and its
+	// 7. Rows on accents. A row stands where a sound begins - every segment of the analysis - and its
 	// weight is how sure the analysis is of that onset, which is the nearest thing in it to "how much
 	// of an accent was that". So the terrain's rows come at the music's own rhythm, bunch up in a
 	// fill, thin out over a held note, and each crosses "now" exactly as its sound is heard.
-	// What that needs, or it breaks: two sounds a few hundredths apart are ONE row (the stronger); a
+	// What that needs, or it breaks: two sounds a few hundredths apart are one row (the stronger); a
 	// stretch with no sound still gets rows, weightless ones, or the ground has a hole in it; and a
 	// bar's first beat is a row whether a sound began there or not, so the bars (2) still read.
 	// Switched off, rows sit on the track's beats and the midpoints between them, all of one weight.
@@ -388,9 +389,9 @@ function create(): Preset {
 	return {
 		draw(frame) {
 			const { ctx, width, height, isPlaying, colorRgb, audio, progressSec } = frame;
-			// PAUSED: one frame, then nothing until something it shows changes - the track, the moment (a
+			// Paused: one frame, then nothing until something it shows changes - the track, the moment (a
 			// seek), the size, a knob or a feature. Spotify opens paused, and drawing nothing until the
-			// first play was a black screen as the first thing anyone saw. The terrain is put straight up
+			// first play would show a black screen first. The terrain is put straight up
 			// at the paused moment, without the rise: nothing moves while paused, so it would never rise
 			const still = isPlaying ? "" : [progressSec, width, height, tuneVersion(), FEATURE_KEYS.map(f => +f.on).join("")].join("|");
 			if (!isPlaying) {
@@ -453,14 +454,13 @@ function create(): Preset {
 			if (shown) for (let k = 0; k < 8; k++) coming += sampleCurve(shown.loudnessCurve, viewTime + beat * (4 + (k * 12) / 7)) / 8;
 			ahead += (coming - ahead) * Math.min(1, 2 * c.dt);
 
-			// ---- 5. THE CAMERA --------------------------------------------------------------------------------
+			// ---- 5. the camera --------------------------------------------------------------------------------
 			// It rides high over a loud passage, looking down on the terrain spread out below it, and low
 			// over a quiet one; and it crouches when what is coming is louder than what has been, so a
-			// build is seen from under the wall it is building. Lower also means looking UP: the horizon
-			// drops with the camera, or the ground only squashes and the move does not read (the first
-			// version moved the ground by 15% and nobody saw it). Driven by the two measured levels above
-			// and nothing else: this project does not trust its moment detector with geometry, and the
-			// camera is geometry. Eased over a second and a half, so it never moves anything faster than
+			// build is seen from under the wall it is building. Lower also means looking up: the horizon
+			// drops with the camera, or the ground only squashes and the move does not read (moving the
+			// ground by 15% alone goes unseen). Driven by the two measured levels above and nothing
+			// else: the moment detector is not trusted with geometry, and the camera is geometry. Eased over a second and a half, so it never moves anything faster than
 			// that thing is already moving.
 			const loud = Math.max(0, Math.min(1, (lately - K.LATELY_QUIET) / (K.LATELY_LOUD - K.LATELY_QUIET)));
 			const crouch = Math.max(0, Math.min(1, (ahead - lately) / K.LEAD_FULL));
@@ -481,7 +481,7 @@ function create(): Preset {
 			const sway = Math.sin(swayClock * 0.2) * width * (FEATURES.camera.on ? 0.085 : 0.05) * K.SWAY;
 			const midAt = (z: number) => cx + sway * (1 / z - 1 / K.Z_NOW);
 			const baseAt = (z: number) => hy + ground / z;
-			// Out of the fog at the horizon - and UP out of it: a row at the far edge is flat and has no
+			// Out of the fog at the horizon - and up out of it: a row at the far edge is flat and has no
 			// body, and grows to its height as it comes in. Fading only its line left a full-height black
 			// mountain appearing at once against the sky, a new one every half beat.
 			// And what has been played sinks and goes out by the front edge
@@ -513,11 +513,11 @@ function create(): Preset {
 			ctx.lineJoin = "round";
 			ctx.lineCap = "round";
 
-			// ---- 1. THE GLOW ON THE HORIZON ---------------------------------------------------------------------
+			// ---- 1. the glow on the horizon ---------------------------------------------------------------------
 			// The sky over the far edge is as bright as the next twelve beats are loud, in the colour of
 			// the section that is coming: a drop is a dawn before it is a wall. It is drawn first, so the
 			// far mountains stand in front of it as silhouettes. Tall above the far edge of the ground and
-			// shallow below it - a haze over the far plain - because cut off flat along that edge it ended
+			// shallow below it - a haze over the far plain - because cut off flat along that edge it ends
 			// in a hard line right across the picture. Kept dim: the glow pass at the end multiplies
 			// whatever is bright, and a bright sky would bloom over everything.
 			const yFar = baseAt(zFar);
@@ -528,7 +528,7 @@ function create(): Preset {
 					const hue = far.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * COLOURS.harmony : liveHue);
 					const sky = hslToRgb(hue + turn * 0.3, far.s * 0.85, Math.min(0.7, far.l + 0.05));
 					// A low wide band, not a disc: one gradient stretched far more across than up, so it lies along
-					// the horizon. Round, it read as a spot hanging in the sky. Above the far edge it rises SKY_HEIGHT,
+					// the horizon. Round, it reads as a spot hanging in the sky. Above the far edge it rises SKY_HEIGHT,
 					// below it a third of that - the haze over the far plain - and both halves are brightest where
 					// they meet, along the edge. The falloff has no knee, so the band has no visible rim.
 					const across = width * K.SKY_WIDTH;
@@ -550,18 +550,18 @@ function create(): Preset {
 				}
 			}
 
-			// ---- 6. THE DUST ------------------------------------------------------------------------------------
+			// ---- 6. the dust ------------------------------------------------------------------------------------
 			// Specks in the air above the terrain, carried past at the terrain's own speed - they belong to
 			// the world, so they are on the track's clock, stop when it stops, and come out of the fog and
 			// leave by the front edge like everything else. Drawn as short streaks down the line of flight,
-			// not as points (points of light were tried in this preset and read as bulbs), kept above the
+			// not as points (points of light read as bulbs), kept above the
 			// tallest ridge so the terrain never has to hide one, and lit by the sound.
 			if (FEATURES.dust.on && presence > 0.02) {
 				const span = K.PAST_BEATS + K.FUTURE_BEATS;
 				const light = presence * (0.1 + c.energy * 0.5) * K.DUST_LIGHT;
 				ctx.lineWidth = Math.max(1, scale * 0.0011);
 				// one short stroke a speck, at its own strength. Not one path for all of them: a path's cost on
-				// the GPU goes by the area it spans, and specks spread over the whole picture made three
+				// the GPU goes by the area it spans, and specks spread over the whole picture would make three
 				// full-screen strokes a frame - measured at 1440p, a quarter of the frame rate
 				for (let i = 0; i < DUST; i++) {
 					const along = (((dust[i * 4 + 2] * span - viewTime / beat) % span) + span) % span;
@@ -579,7 +579,7 @@ function create(): Preset {
 			}
 
 			// ---- one row: its body, so it hides what is behind, then its line -----------------------------------
-			// ONE path does for both: fill() closes it along the baseline on its own, stroke() does not, so
+			// One path does for both: fill() closes it along the baseline on its own, stroke() does not, so
 			// the line has no bottom edge. The body only has to reach the row's own baseline - every row
 			// further away sits higher on the screen than that. The path is the mountains alone; the flat
 			// ground to either side has no body to fill and is two straight lines.
@@ -602,7 +602,7 @@ function create(): Preset {
 				for (let i = 0; i < POINTS; i += stride) ctx.lineTo(mid + ACROSS[i] * kx, yBase - data[i] * lift);
 				ctx.lineTo(x1, yBase);
 
-				// ---- 3. COLOUR BY HEIGHT, the row's own colour ----
+				// ---- 3. colour by height, the row's own colour ----
 				// Hue is the section's and nothing else's; depth takes the saturation out (haze), and the
 				// row's loudness is its lightness. The line is drawn a little darker when the peaks have
 				// their own colour, so a valley is dark and a peak is not.
@@ -611,9 +611,9 @@ function create(): Preset {
 				const sat = base.s * 0.9 * (FEATURES.height.on ? 1 - far * 0.45 : 1);
 				const rgb = hslToRgb(base.h + hue, sat, base.l * (FEATURES.height.on ? 0.42 + level * 0.5 : 0.55 + level * 0.6));
 
-				// ---- 4. LIT MOUNTAINS ----
+				// ---- 4. lit mountains ----
 				// A body near "now" is not black but faintly lit from its ridge down, as if by the line.
-				// It stays OPAQUE - the light is in the colour, never in the alpha - or it would stop
+				// It stays opaque - the light is in the colour, never in the alpha - or it would stop
 				// hiding the rows behind it. Dim enough that the glow pass leaves it alone.
 				const solid = Math.min(1, flat * 1.5);
 				if (FEATURES.lit.on && glint > 0.03 && lift > 3) {
@@ -625,8 +625,8 @@ function create(): Preset {
 				ctx.fill();
 				if (alpha < 0.004) return;
 
-				// ---- 3. COLOUR BY HEIGHT, the peaks ----
-				// ONE stroke, coloured up the screen: the row's colour at the ground, paler and stronger
+				// ---- 3. colour by height, the peaks ----
+				// One stroke, coloured up the screen: the row's colour at the ground, paler and stronger
 				// at a ridge's height. (As a second stroke added on top it cost a quarter of the frame.)
 				// A row with no height to speak of has no "up" to colour along, and gets the flat colour.
 				ctx.lineWidth = lineWidth;
@@ -662,7 +662,7 @@ function create(): Preset {
 			const chase = Math.min(1, 14 * c.dt);
 			// (paused, it is simply where it would have got to)
 			for (let i = 0; i < POINTS + 2; i++) live[i] += (target[i] - live[i]) * (isPlaying ? chase : 1);
-			// its body takes its place in the terrain; its LINE is drawn last of all, over everything - what
+			// its body takes its place in the terrain; its line is drawn last of all, over everything - what
 			// has just been played is still standing in front of it, and the waveform is not to be hidden
 			const drawLive = () => row(live, K.Z_NOW, 1, 0, 1, liveHue + turn, live[LEVEL], 0.14 + c.energy * 0.3);
 
@@ -690,10 +690,10 @@ function create(): Preset {
 			}
 			played = count;
 
-			// ---- 2. BARS AND SECTION GATES, the gates -------------------------------------------------------------
+			// ---- 2. bars and section gates, the gates -------------------------------------------------------------
 			// A section boundary is a row of its own, exactly on the boundary, in the pale colour of the
 			// section it opens - and every row behind it is already in that section's colour, so the next
-			// part of the song is seen coming as a different-coloured country. It is a LINE and a colour,
+			// part of the song is seen coming as a different-coloured country. It is a line and a colour,
 			// nothing more: the analysis's sections are a timbral segmentation, not the song's form, and
 			// have missed real choruses by seconds - so a gate may not do anything a wrong one would make
 			// embarrassing, and a boundary the analysis is unsure of is drawn fainter.
@@ -751,7 +751,7 @@ function create(): Preset {
 				// a row brightens as it comes under the playhead: the beat, crossing "now"
 				const crossing = Math.exp(-Math.pow(tau / (beat * 0.35), 2));
 				const level = data[LEVEL];
-				// ---- 2. BARS AND SECTION GATES, the bars ----
+				// ---- 2. bars and section gates, the bars ----
 				// The row on the first beat of a bar is a little brighter and heavier, so the metre comes
 				// at you as a ladder. From `bars` in the analysis.
 				const bar = FEATURES.grid.on && rowBars[n];
@@ -779,8 +779,8 @@ function create(): Preset {
 
 			// ---- the echoes: a skin stretched between the line and where the mountains stood ---------------------
 			// An echo is never below the line and never apart from it: wherever the line is as high, the echo
-			// IS the line, and it lifts off it only where the mountain was. Drawn as its own shape on the
-			// ground it came apart into pieces, one a hill, with gaps between them and under them.
+			// is the line, and it lifts off it only where the mountain was. Drawn as its own shape on the
+			// ground it would come apart into pieces, one a hill, with gaps between them and under them.
 			const yNow = baseAt(K.Z_NOW);
 			const liftNow = (ridge / K.Z_NOW) * presence;
 			const life = K.ECHO_BEATS * beat;
@@ -795,7 +795,7 @@ function create(): Preset {
 					echoes.splice(e, 1);
 					continue;
 				}
-				// it arrives over a few frames rather than appearing (§5c), and leaves slower than it came
+				// it arrives over a few frames rather than appearing, and leaves slower than it came
 				const a = smoothstep(echo.age / 0.04) * (1 - t) * (1 - t) * Math.min(1, 0.2 + echo.amp * 0.6) * presence;
 				if (a < 0.01) continue;
 				const swell = 1 + (1 - (1 - t) * (1 - t)) * (K.ECHO_SWELL_SOFT + Math.min(1, echo.amp) * (K.ECHO_SWELL_HARD - K.ECHO_SWELL_SOFT));

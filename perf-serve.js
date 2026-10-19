@@ -45,11 +45,10 @@ http
 		// and its notifications live in that window. This lets a probe post what it found somewhere
 		// readable instead of asking a human to transcribe a console line.
 		// the last track's real analysis, so the structure detector can be developed against music
-		// instead of against synthetic data invented to match its own assumptions
 		if (req.method === "POST" && req.url === "/dump") {
 			collect(req, res, body => {
-				// one file per track. A single shared file was overwritten the moment Spotify advanced
-				// to the next song, which silently pointed a lab run at a different track's analysis
+				// one file per track: a single shared file would be overwritten the moment Spotify
+				// advances to the next song
 				let name = "unknown";
 				try { name = String(JSON.parse(body).name || "unknown"); } catch { /* keep the default */ }
 				const safe = name.replace(/[^\wЀ-ӿ　-鿿 -]/g, "").trim().slice(0, 60) || "unknown";
@@ -61,8 +60,8 @@ http
 			});
 			return;
 		}
-		// "this looks wrong, right now" - one line per press, appended. See app.tsx: the point is a
-		// dataset of real failures instead of a description of a picture nobody has seen yet.
+		// "this looks wrong, right now" - one line per press of B in a dev build (see app.tsx),
+		// appended: a dataset of real failures.
 		if (req.method === "POST" && req.url === "/mark") {
 			collect(req, res, body => {
 				fs.appendFileSync(path.join(__dirname, "marks.jsonl"), `${body}

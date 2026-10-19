@@ -1,18 +1,17 @@
-// Layers 3D. The same music-to-picture logic as Layers III - three layers on one wind, one mark per
-// sound lit before the sound, a mark combing the field it passes through - in a real volume, drawn
-// by a real camera. Two attempts at faking depth on the flat picture (a slab that swung, then a
-// parallax orbit) could not be seen at all, so this one is not a projection of the old picture: the
-// particles LIVE in three dimensions and their trails are ribbons in space, redrawn from the
-// camera's place every frame.
+// Drift. Three layers on one wind, one mark per sound lit before the sound, a mark combing the
+// field it passes through - in a real volume, drawn by a real camera. Faking depth on the flat
+// picture (a slab that swung, a parallax orbit) could not be seen at all, so the particles live in
+// three dimensions and their trails are ribbons in space, redrawn from the camera's place every
+// frame.
 //
-//   the cloud    a sphere of strokes. The camera sits INSIDE it and orbits its centre, so near
+//   the cloud    a sphere of strokes. The camera sits inside it and orbits its centre, so near
 //                strokes sweep one way and far ones the other - parallax, which is what depth is.
 //   the ground   wide dim ribbons, ~8 s life. The loudness of the last ten seconds.
 //   the sheet    hairlines, ~3 s life. The loudness now.
 //   the marks    one per sound, placed where the camera can see it, shaped by that sound.
 //
-// The rules are Layers III's (DESIGN-RULES): one wind and bounded offsets from it, geometry never
-// steps, the only coupling is a mark's wake, time in beats of the track.
+// The rules: one wind and bounded offsets from it, geometry never steps, the only coupling is a
+// mark's wake, time in beats of the track.
 //
 // Drawn with WebGL into its own canvas and composited onto the frame's 2D context, because a trail
 // that is a ribbon in space has to be redrawn whole every frame - ten thousand segments, which the
@@ -55,9 +54,9 @@ const SHEET_COUNT = 1000;
 const MARK_POOL = 220;
 // points in every ribbon, and how long each layer's ribbon is in seconds
 const TRAIL = 12;
-// ...of which the first two are its NOSE: a ribbon's leading end is rounded off, not cut square
+// ...of which the first two are its nose: a ribbon's leading end is rounded off, not cut square
 const TAIL = TRAIL - 2;
-// places remembered per particle: one more than is drawn, so every drawn point can sit at an EXACT
+// places remembered per particle: one more than is drawn, so every drawn point can sit at an exact
 // age between two remembered ones (see `ribbon`)
 const RING = TRAIL + 1;
 const GROUND_TRAIL = 1.292;
@@ -65,9 +64,9 @@ const SHEET_TRAIL = 0.4625;
 const MARK_TRAIL = 0.3465;
 
 // ---- the wind, and the flow around it ------------------------------------------------------------------
-// THE FLOW is curl noise (Bridson 2007): the curl of a noise potential, which has no sources and no
-// sinks. The flat presets' "wind plus two noise offsets" is not that - it herds strokes into ropes
-// and leaves holes, which a 2D trail hides and a volume does not. How far off the wind the flow may
+// The flow is curl noise (Bridson 2007): the curl of a noise potential, which has no sources and no
+// sinks. A "wind plus two noise offsets" field is not that - it herds strokes into ropes and leaves
+// holes, which a 2D trail hides and a volume does not. How far off the wind the flow may
 // carry a stroke is bounded, so nothing ever flies backwards.
 const FLOW_MAX = 0.6496;
 // how hard the flow carries a mark off the wind (the ground's and the sheet's are the background's)
@@ -75,11 +74,11 @@ const MARK_SPREAD_MAX = 1.5;
 // a stroke's place in the flow is re-read every this many frames (staggered across the population),
 // and its momentum carries it between - nine noise reads a stroke would otherwise be most of a frame
 const FLOW_EVERY = 4;
-// INERTIA: how long a stroke takes to come round to what the flow asks of it, seconds. In the flat
-// presets a heading was recomputed from nothing every frame and nobody could tell, because a trail
-// there is a tenth of a second long. A ribbon here is the last half second or more of the path, laid
-// out in space - every change of mind is drawn. Measured before this existed: the sheet reversed its
-// turn 0.82 times a second in unison, the marks turned at up to 0.86 rad/s.
+// Inertia: how long a stroke takes to come round to what the flow asks of it, seconds. A heading
+// recomputed from nothing every frame cannot be seen in a 2D trail a tenth of a second long, but a
+// ribbon here is the last half second or more of the path, laid out in space - every change of
+// mind is drawn. Without inertia the sheet reverses its turn 0.82 times a second in unison and the
+// marks turn at up to 0.86 rad/s.
 const GROUND_INERTIA = 1.62;
 const SHEET_INERTIA = 1.067;
 const MARK_INERTIA = 0.8696;
@@ -100,7 +99,7 @@ const FLING_RANK = 1.403;
 // how near the camera a mark may be born, and how far
 const MARK_NEAR = 0.6;
 const MARK_FAR = 2.7;
-// A NEAR MARK FLIES IN FROM OFF SCREEN. Lit where it stands, a big near mark is a thing appearing in
+// A near mark flies in from off screen. Lit where it stands, a big near mark is a thing appearing in
 // mid-air; so the nearer ones (this far along the near-far axis, and nearer) start just past the edge
 // of the picture, upwind of the place their sound belongs, and are carried in across it as they
 // light. The far ones are small enough to come up where they are - and a sky where everything enters
@@ -475,7 +474,7 @@ function create(): Preset {
 	const noise = createNoise3D();
 	const conduct = createConductor();
 	const nextSound = createNextSound();
-	// ONE renderer for the life of the page. create() reruns on every preset switch, and a browser
+	// One renderer for the life of the page. create() reruns on every preset switch, and a browser
 	// keeps only about sixteen WebGL contexts alive: a context per switch would end with the oldest
 	// being dropped and this preset going black after enough switching back and forth.
 	if (sharedRenderer === undefined) sharedRenderer = makeRenderer();
@@ -572,16 +571,16 @@ function create(): Preset {
 	return {
 		draw(frame) {
 			const { ctx, width, height, isPlaying, colorRgb, audio, progressSec } = frame;
-			// PAUSED: one frame, then nothing until something it shows changes - the moment (a seek), the
+			// Paused: one frame, then nothing until something it shows changes - the moment (a seek), the
 			// size, a knob or a colour. Time stands still with the track (every step here is the track's own
-			// dt), so that frame is the same scene, only drawn again. It was nothing at all: a colour picked
-			// while paused showed only on play, and a switch to Drift while paused was a black screen
+			// dt), so that frame is the same scene, only drawn again. Drawing nothing at all would show a
+			// colour picked while paused only on play, and a switch to Drift while paused as a black screen
 			if (!isPlaying) {
 				const still = [progressSec, width, height, tuneVersion()].join("|");
 				if (still === pausedAt) return;
 				pausedAt = still;
 			} else pausedAt = "";
-			// the lens and the fog, read once a frame: per point they were a sixth of the whole frame's work
+			// the lens and the fog, read once a frame: per point they would be a sixth of the whole frame's work
 			nearDark = K.NEAR_DARK;
 			nearK = 1 / (K.NEAR_CLEAR - K.NEAR_DARK);
 			fogStart = K.FOG_START;
@@ -600,7 +599,7 @@ function create(): Preset {
 			const skyTarget = Math.max(8, Math.min(marks.length, marks.length * (0.35 + slowBand * 0.75)));
 			if (skySize === 0) skySize = Math.round(skyTarget);
 			else if (skyTarget >= skySize + 1) skySize++;
-			// the sky shrinks past a mark only once it has gone out - cut while lit, it vanished on the spot
+			// the sky shrinks past a mark only once it has gone out - cut while lit, it would vanish on the spot
 			else if (skyTarget <= skySize - 1 && marks[skySize - 1].age > marks[skySize - 1].rise + marks[skySize - 1].decay * 4.5) skySize--;
 			const inSky = Math.max(8, Math.min(marks.length, skySize));
 			const cutters: Mark[] = [];
@@ -610,7 +609,7 @@ function create(): Preset {
 				marks[i].charge = 0;
 			}
 
-			// ---- the brace and the release (as Layers III) ------------------------------------------------
+			// ---- the brace and the release ------------------------------------------------
 			const braceEarly = Math.max(c.anticipation, Math.min(1, c.windup * 0.8));
 			const releaseRaw = c.timeToImpact !== null && c.timeToImpact > 0 ? 0 : c.impact;
 			flash += (releaseRaw - flash) * Math.min(1, (releaseRaw > flash ? 11 : 3) * c.dt);
@@ -655,8 +654,8 @@ function create(): Preset {
 			const aspect = width / height;
 
 			// ---- the wind: one direction in the world, wandering slowly on its own -----------------------------
-			// (Tied to the camera's travel it was tried, so that the flow always crossed the picture, and
-			// cut on sight: the wind is the scene's, not the camera's.)
+			// (Tying it to the camera's travel, so that the flow always crosses the picture, was rejected:
+			// the wind is the scene's, not the camera's.)
 			const windStep = (0.22 + harm * 1.5) * c.dt;
 			windAz += Math.max(-windStep, Math.min(windStep, shortest(noise(fieldTime * 0.14, 11.3, 0) * Math.PI - windAz)));
 			windEl += Math.max(-windStep * 0.5, Math.min(windStep * 0.5, noise(fieldTime * 0.11, 3.1, 7.7) * 0.5 - windEl));
@@ -766,14 +765,14 @@ function create(): Preset {
 
 			// ---- a ribbon: one particle's trail, from the camera's place, into a strip of vertices -----------
 			let checksum = 0;
-			// A ribbon is the particle's path RESAMPLED AT FIXED AGES: point j is where it was exactly j steps
+			// A ribbon is the particle's path resampled at fixed ages: point j is where it was exactly j steps
 			// ago, found between the two remembered places either side of that moment. Drawing the
-			// remembered places themselves was the jerk in the first build - a new one is taken ~17 times a
-			// second, and on that frame the strip's first segment collapsed to nothing and its soft tip
-			// changed length, so every ribbon twitched at 17 Hz. Resampled, every point slides continuously.
-			// The strip's first two points are a NOSE in front of the particle - a half and a whole width
-			// ahead, narrowing as a circle does - so the thick end is round. (It was cut square: hidden
-			// under a mark's star when the star was big, and plain to see when it was not.)
+			// remembered places themselves jerks - a new one is taken ~17 times a second, and on that
+			// frame the strip's first segment collapses to nothing and its soft tip changes length, so
+			// every ribbon twitches at 17 Hz. Resampled, every point slides continuously.
+			// The strip's first two points are a nose in front of the particle - a half and a whole width
+			// ahead, narrowing as a circle does - so the thick end is round. (Cut square, it would hide
+			// under a mark's star only when the star is big.)
 			const maxHalf = height * K.MAX_HALF_WIDTH;
 			const ribbon = (verts: Float32Array, t: Trail, i: number, alpha: number, halfWidth: number, tone = -1) => {
 				const back = 1 - t.clock / t.step;
@@ -871,7 +870,7 @@ function create(): Preset {
 					checksum += sxs[j] + sys[j] + a;
 				}
 			};
-			// every layer remembers a new place on its own clock, so a ribbon is as long in SECONDS on any
+			// every layer remembers a new place on its own clock, so a ribbon is as long in seconds on any
 			// screen; between them the newest follows the particle
 			const advance = (t: Trail, list: Particle[]) => {
 				t.clock += c.dt;
@@ -1001,7 +1000,7 @@ function create(): Preset {
 				1,
 				// how widely it wanders is the background's statement, like the ground's: `harmonicShift`
 				// is not a rare event (its eased form sits near 0.7 all song), and as an amplitude on every
-				// heading at once it was the rest of the sheet's wiggle
+				// heading at once it would be the rest of the sheet's wiggle
 				Math.max(0.04, (0.6 + slowBand * 0.8) * (1 - braceEarly * 0.35)),
 				0.27,
 				(0.035 + c.loudness * 0.55) * windUp,
@@ -1041,9 +1040,9 @@ function create(): Preset {
 				resetTrail(markTrail, i, m);
 			};
 			// Written only while it is dark: its light starts at zero and rises through a smoothstep.
-			// (Keeping the dark marks flying in the picture and lighting the nearest was tried, to stop a
-			// mark appearing in mid-air: it did, and it made the sky orderly - every mark already settled
-			// into the stream, evenly spread. Cut on the listener's eye.)
+			// (Keeping the dark marks flying in the picture and lighting the nearest stops a mark appearing
+			// in mid-air, but makes the sky orderly: every mark already settled into the stream, evenly
+			// spread.)
 			const ignite = (m: Mark, i: number, lit: number, wanted: number) => {
 				m.streak = lit === 0 && sound.standout ? 1 : 0;
 				m.age = -lit * 0.014;
@@ -1089,8 +1088,8 @@ function create(): Preset {
 				let lit = 0;
 				for (let tries = 0; tries < inSky && lit < wanted; tries++) {
 					const i = cursor++ % inSky;
-					// only a mark that has gone out: one taken at 0.6 of its decay still had half its charge,
-					// up to full light at the cap, and vanished in one frame - 55 a minute, measured. When none
+					// only a mark that has gone out: one taken at 0.6 of its decay still has half its charge,
+					// up to full light at the cap, and vanishes in one frame (55 a minute, measured). When none
 					// is dark enough the sound lights fewer, never one that is still lit
 					if (marks[i].age <= marks[i].rise + marks[i].decay * 4.5) continue;
 					ignite(marks[i], i, lit, wanted);

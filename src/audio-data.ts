@@ -10,7 +10,7 @@ export type Section = {
 	duration: number;
 	confidence: number;
 	loudness: number;
-	// each section carries its OWN tempo and metre - a track is not obliged to keep either
+	// each section carries its own tempo and metre - a track is not obliged to keep either
 	tempo: number;
 	time_signature: number;
 	key: number;
@@ -25,40 +25,36 @@ export type TrackAudioData = {
 	// the metrical grid: which beats start a bar. Empty when the track has none
 	bars: Bar[];
 	// the track's own structure, with each section's loudness in dB. This is what makes anticipating
-	// a chorus possible at all - it is the only part of the analysis that describes the FUTURE
+	// a chorus possible at all - it is the only part of the analysis that describes the future
 	sections: Section[];
 	// each section's loudness as a rank within this track, 0..1, aligned with `sections`. This is
-	// what "how big is this part of the song" means in practice - see sectionRanks above
+	// what "how big is this part of the song" means in practice - see sectionRanks below
 	sectionIntensity: number[];
 	// the track's big moments and what the music does on the way into each - see track-structure.ts
 	moments: Moment[];
-	// the sub-beat grid, roughly two to four per beat. Carried but not yet used by anything - see
-	// docs/DATA.md
+	// the sub-beat grid, roughly two to four per beat. Carried but not used - see docs/DATA.md
 	tatums: Bar[];
 	// the audio's own onsets, from `rhythmstring` - see rhythm.ts. Empty when the track has no
-	// rhythmstring (8 of 89 dumps) or the platform cannot inflate it, and `strike` falls back to
-	// the segment-based detector then
+	// rhythmstring (8 of 89 dumps) or the platform cannot inflate it, and the `strike` in flowfield-common.ts
+	// falls back to the segment-based detector then
 	hits: Hit[];
-	// this track's own 5th and 95th percentile of timbre[1] - "how bright/ringing did that sound",
-	// which is the only per-event scale we have with a usable spread. Raw it runs about -34..99 and
-	// sits differently on every track, so like `hitScale` it is normalised per track or a dull one
-	// would spend the whole song against one edge. Measured across 26k events: consecutive hits
-	// differ by 19% of the range at the median, and any ten seconds covers 68% of it.
-	// every segment's timbre[1], sorted. A mark's place on the axis is its RANK here, not its value:
-	// the raw numbers are bell-shaped, so a linear stretch left the marks bunched in the middle and
-	// the axis was used to about a third of its width. A rank spreads them evenly by construction.
+	// every segment's timbre[1] ("how bright/ringing did that sound"), sorted - the only per-event
+	// scale with a usable spread. Raw it runs about -34..99 and sits differently on every track, so
+	// it is normalised per track. Measured across 26k events: consecutive hits differ by 19% of the
+	// range at the median, and any ten seconds covers 68% of it.
+	// A mark's place on the axis is its rank here, not its value: the raw numbers are bell-shaped,
+	// so a linear stretch leaves the marks bunched in the middle (about a third of the axis used).
+	// A rank spreads them evenly by construction.
 	timbreSorted: number[];
 	// the analysis's own track-level summary, verbatim and untyped. What this object actually
-	// contains from the internal endpoint has never been checked, only assumed from the public Web
-	// API's documentation, so it is dumped as-is rather than picked apart here
+	// contains from the internal endpoint is assumed from the public Web API's documentation, not
+	// verified, so it is kept as-is rather than picked apart here
 	trackInfo: Record<string, unknown>;
 	// The amplitude a single hit is measured against: this track's own 98th-percentile segment.
-	// Everything that asks "was that a big hit?" divides by this. It used to be a fixed x1.8 against
-	// Spotify's absolute scale, clamped to 1 - and on any modern master most of a chorus is past
-	// that clamp, so every hit in it measured as exactly 1.0. The star's rarity is built on beating
-	// the loudest hit of the last few seconds, which nothing can do when they are all equal, so it
-	// fired on essentially every beat: a star every 1.3s on the busiest track measured. Same ceiling
-	// as DESIGN-RULES §3b, in a comparison rather than in a colour.
+	// Everything that asks "was that a big hit?" divides by this. A fixed scale against Spotify's
+	// absolute amplitude, clamped to 1, fails on a modern master: most of a chorus is past the
+	// clamp, every hit measures exactly 1.0, and anything built on beating the loudest recent hit
+	// fires on nearly every beat (a star every 1.3s on the busiest track measured).
 	hitScale: number;
 };
 
@@ -72,15 +68,12 @@ const toAmplitude = (db: number) => Math.pow(10, db / 20);
 const ENERGY_QUIET = 0.06;
 const ENERGY_LOUD = 0.62;
 
-// A track mastered at -13dB used to sit at 0.22 for its entire length and render as a permanent
-// interlude: dim, slow, nothing happening. Loudness is a property of the MASTERING, not of the
+// A track mastered at -13dB would sit at 0.22 for its entire length and render as a permanent
+// interlude: dim, slow, nothing happening. Loudness is a property of the mastering, not of the
 // music, so the curve is normalised onto the track's own 5th and 95th percentiles. Percentiles
 // rather than min and max because a single silent outro would otherwise define the whole scale.
 // Exported, because every harness that builds a curve of its own has to apply the same stretch as
-// the client or it is looking at a different picture. Both of them had drifted: `music-lab.js`
-// stretched onto 0.12..0.85, and the preview harness did not normalise at all - so the tool the
-// project uses to LOOK at a preset was showing it at the bottom of its own dynamic range, dark and
-// slow, on every preset at once.
+// the client, or it shows a preset at the bottom of its dynamic range.
 export function normaliseCurve(curve: CurvePoint[]) {
 	const sorted = curve.map(p => p.y).filter(y => Number.isFinite(y)).sort((a, b) => a - b);
 	if (sorted.length < 8) return;
@@ -90,9 +83,8 @@ export function normaliseCurve(curve: CurvePoint[]) {
 	if (hi - lo < 1e-4) return;
 	const scale = (ENERGY_LOUD - ENERGY_QUIET) / (hi - lo);
 	// Blended with the untouched value rather than replacing it. Full normalisation gives every
-	// track the same dynamic range, which is right for making a chorus register on a compressed
-	// master - and wrong in the other direction, because it also makes a quiet, gentle song move
-	// like a loud one. It stopped sounding like the song. Most of the weight is on the track's own
+	// track the same dynamic range, which makes a chorus register on a compressed master but also
+	// makes a quiet, gentle song move like a loud one. Most of the weight is on the track's own
 	// dynamics; the remainder keeps a quiet track quieter than a loud one.
 	for (const point of curve) {
 		const stretched = ENERGY_QUIET + (point.y - lo) * scale;
@@ -124,7 +116,7 @@ export function rankOf(sorted: number[] | undefined, value: number): number {
 }
 
 // The 98th percentile rather than the maximum: one clipped transient must not define the scale for
-// the whole track, and the point of the number is "what does a big hit sound like HERE".
+// the whole track, and the point of the number is "what does a big hit sound like here".
 function hitScaleOf(segments: SpotifyAudioAnalysis["segments"]): number {
 	const sorted = segments
 		.map(s => toAmplitude(s.loudness_max))
@@ -134,7 +126,7 @@ function hitScaleOf(segments: SpotifyAudioAnalysis["segments"]): number {
 	return Math.max(0.02, sorted[Math.floor((sorted.length - 1) * 0.98)]);
 }
 
-// Each section's loudness as its RANK within the track, 0..1. Rank rather than decibels because a
+// Each section's loudness as its rank within the track, 0..1. Rank rather than decibels because a
 // modern master compresses a chorus to about a decibel over a verse while an older one spans ten -
 // the same musical event, two unrelated numbers. Rank is immune to that and to outliers.
 function sectionRanks(sections: Section[]): number[] {
@@ -195,11 +187,11 @@ export function timeSinceLastBeat(beats: SpotifyAudioAnalysis["beats"], t: numbe
 	return t - beats[lo].start;
 }
 
-// How far `t` is from the nearest bar BOUNDARY, and how sure the tracker was about that bar.
+// How far `t` is from the nearest bar boundary, and how sure the tracker was about that bar.
 // Nearest, not "the bar containing t": the beat grid and the bar grid are estimated separately and
 // a beat that starts a bar can land a few milliseconds on either side of it. Asking only about the
-// bar that began before `t` marks such a beat as being most of a bar late, so real downbeats were
-// being classified as weak whenever they happened to land early.
+// bar that began before `t` marks such a beat as being most of a bar late, so real downbeats that
+// land early would be classified as weak.
 export function nearestBarStart(bars: Bar[], t: number): { distance: number; confidence: number } | null {
 	if (bars.length === 0) return null;
 	let lo = 0;
@@ -250,9 +242,9 @@ export function segmentAt(segments: SpotifyAudioAnalysis["segments"], t: number)
 	return segments[lo];
 }
 
-// The analysis endpoint, fetched OURSELVES rather than through `Spicetify.getAudioData`.
+// The analysis endpoint, fetched directly rather than only through `Spicetify.getAudioData`.
 //
-// Why this exists, as of 2026-09-17: spicetify's wrapper picks how to make the request from the
+// Why: spicetify's wrapper picks how to make the request from the
 // client's version string, and the test is
 //
 //     const a = Spicetify.Platform.version.split(".").map(Number);
@@ -263,10 +255,9 @@ export function segmentAt(segments: SpotifyAudioAnalysis["segments"], t: number)
 // wrapper falls back to the legacy path that the fetch shim was written to replace, on every
 // request, for every track. The version comparison only ever understood 1.2.x.
 //
-// So we do what the shim does, and stop depending on which branch a third party's version check
-// happens to take: the same URL, the same three headers, and the same treatment of a non-OK
-// response. `Spicetify.getAudioData` is still tried first, because when it works it is the
-// supported path and it will keep working when this is fixed upstream.
+// So this does what the shim does, independent of which branch the version check takes: the same
+// URL, the same three headers, and the same treatment of a non-OK response.
+// `Spicetify.getAudioData` is still tried first, because when it works it is the supported path.
 type CosmosFailure = { code?: number; error?: string; message?: string };
 
 const looksLikeAnalysis = (x: unknown): x is SpotifyAudioAnalysis =>
@@ -312,8 +303,7 @@ export async function loadTrackAudioData(uri: string): Promise<TrackAudioData> {
 	if (looksLikeAnalysis(viaWrapper)) {
 		analysis = viaWrapper;
 	} else {
-		// what the wrapper said, kept so the notification can name both failures rather than the
-		// second one only
+		// what the wrapper said, kept so the error can name both failures
 		const wrapperSaid = describeFailure(viaWrapper);
 		let direct: unknown;
 		try {
@@ -325,11 +315,10 @@ export async function loadTrackAudioData(uri: string): Promise<TrackAudioData> {
 		analysis = direct;
 	}
 
-	// Both paths above resolve with an ERROR OBJECT rather than rejecting - `{ code, error, message }`
+	// Both paths above resolve with an error object rather than rejecting - `{ code, error, message }`
 	// is what the wrapper returns for a non-OK response - so the shape is checked before anything
-	// reads it. It used to be checked three lines below `buildLoudnessCurve(analysis.segments)`,
-	// which iterates exactly the thing being checked for, so the message was always "segments is
-	// not iterable" and the real reason never reached anybody. A guard after the use is not a guard.
+	// reads it. Checked after `buildLoudnessCurve(analysis.segments)` it would only ever report
+	// "segments is not iterable", never the real reason.
 	const sections: Section[] = Array.isArray(analysis.sections) ? analysis.sections : [];
 	const curve = buildLoudnessCurve(analysis.segments);
 	normaliseCurve(curve);
@@ -361,9 +350,9 @@ export async function loadTrackAudioData(uri: string): Promise<TrackAudioData> {
 //
 // That is enough for a real pulse and nothing more. There are no segments, so no attack character,
 // no harmonic movement and no verse-versus-chorus dynamics - `loudnessCurve` is flat at the track's
-// measured loudness, and it is left flat on purpose. Inventing an envelope to fill the gap would be
-// exactly the kind of made-up heuristic DESIGN-RULES §8 exists to prevent: better a picture that
-// pulses honestly at the right tempo than one that pretends to hear a structure it cannot.
+// measured loudness, and it is left flat on purpose. An invented envelope would be a made-up
+// heuristic: better a picture that pulses honestly at the right tempo than one that pretends to
+// hear a structure it cannot.
 
 export type TrackAudioFeatures = {
 	tempo: number;
@@ -378,11 +367,9 @@ export type TrackAudioFeatures = {
 export async function loadTrackAudioFeatures(uri: string): Promise<TrackAudioFeatures> {
 	const id = uri.split(":").pop();
 	const url = `https://spclient.wg.spotify.com/audio-attributes/v1/audio-features/${id}?format=json`;
-	// the same two paths, in the same order, for the same reason as the analysis above: this is the
-	// LAST fallback, and it went through `Spicetify.CosmosAsync` - which is the very thing the
-	// version check breaks on Spotify 1.3. A fallback that fails for the same reason as the thing it
-	// is falling back from is not a fallback at all, which is exactly what "no audio data AT ALL for
-	// any track" looked like from outside.
+	// the same two paths, in the same order, for the same reason as the analysis above: a fallback
+	// that goes only through `Spicetify.CosmosAsync` fails for the same reason as the thing it falls
+	// back from (the version check breaks on Spotify 1.3).
 	let body: unknown = null;
 	try {
 		body = await Spicetify.CosmosAsync.get(url);

@@ -4,18 +4,17 @@ type Segment = SpotifyAudioAnalysis["segments"][number];
 
 // Where a track's big moments are, and what the music does on the way into each one.
 //
-// Three earlier versions of this read LOUDNESS - section loudness, then section loudness ranked,
-// then the loudness envelope at fine resolution. All three were the same evidence measured three
-// ways, and they scored 2 accurate hits out of 11 firings across six real tracks. The counter-example
-// that settles it: a track that is loud from beginning to end has no loudness event at its chorus.
-// Modern mastering compresses dynamics on purpose, which destroys exactly the signal those versions
-// depended on. No threshold recovers information that is not in the data.
+// Loudness alone cannot find a chorus. Three loudness-based detectors (section loudness, section
+// loudness ranked, the loudness envelope at fine resolution) were the same evidence measured three
+// ways, and scored 2 accurate hits out of 11 firings across six real tracks. A track that is loud
+// from beginning to end has no loudness event at its chorus: modern mastering compresses dynamics
+// on purpose, and no threshold recovers information that is not in the data.
 //
-// What actually distinguishes a chorus is that IT COMES BACK. That is a question about harmony and
-// timbre, and `segments` carries both - pitches[12] and timbre[12] - which this project has never
-// read. The method here is the standard one: build per-bar feature vectors, compare every bar with
-// every other, find the structural boundaries with a checkerboard novelty kernel (Foote), then keep
-// the boundaries that open a block which is both loud and repeated elsewhere in the track.
+// What distinguishes a chorus is that it comes back. That is a question about harmony and timbre,
+// and `segments` carries both - pitches[12] and timbre[12]. The method is the standard one: build
+// per-bar feature vectors, compare every bar with every other, find the structural boundaries with
+// a checkerboard novelty kernel (Foote), then keep the boundaries that open a block which is both
+// loud and repeated elsewhere in the track.
 
 export type Moment = {
 	/** when it lands, in seconds */
@@ -48,12 +47,12 @@ type Frame = { t: number; duration: number; feature: number[]; brightness: numbe
 // gives a usable grid, fixed windows otherwise - on music with no steady metre its bar lines are
 // worse than an arbitrary ruler, and this only needs a consistent frame, not a musical one.
 function buildFrames(segments: Segment[], bars: Bar[]): Frame[] {
-	// Bars, and bars specifically - a fixed clock grid was tried and scored worse across the board.
-	// Structure lives in PHRASES, so a kernel measured in bars asks the same musical question of a
-	// slow track and a fast one, while a kernel measured in seconds asks a different one of each.
+	// Bars, not a fixed clock grid, which scored worse across the board. Structure lives in phrases,
+	// so a kernel measured in bars asks the same musical question of a slow track and a fast one,
+	// while a kernel measured in seconds asks a different one of each.
 	//
-	// Long bars are subdivided rather than accepted. Two labelled tracks came back with ~3s bars,
-	// leaving 49 and 57 frames for a whole song, and both failed outright; halving those keeps the
+	// Long bars are subdivided rather than accepted. Tracks with ~3s bars leave too few frames for a
+	// whole song (49 and 57 in two labelled cases, both failed outright); halving those keeps the
 	// grid musical while giving structure something to be found in.
 	const spans: { t: number; duration: number }[] = [];
 	const usableBars = bars.filter(b => b.duration > 0.2 && b.duration < 12);
@@ -107,14 +106,12 @@ function buildFrames(segments: Segment[], bars: Bar[]): Frame[] {
 		});
 	}
 
-	// MEAN-CENTRE before anything compares these. Every bar of a track in one key has a similar
+	// Mean-centre before anything compares these. Every bar of a track in one key has a similar
 	// chroma vector, so raw cosine similarity is high between a verse and a chorus as readily as
-	// between two choruses - which collapsed every block into a single group on real music and made
-	// "the chorus" mean the whole song. Subtracting the track's own average leaves only how each bar
-	// DEPARTS from that track, which is the thing that actually differs between its parts.
-	//
-	// This is also the bug that synthetic test data could never have shown: those chords were made
-	// artificially distinct, so grouping worked perfectly on them and not at all on music.
+	// between two choruses, and every block collapses into a single group ("the chorus" then means
+	// the whole song). Subtracting the track's own average leaves only how each bar departs from
+	// that track, which is what actually differs between its parts. Synthetic data with
+	// artificially distinct chords would not show this.
 	if (raw.length === 0) return [];
 	const dims = raw[0].feature.length;
 	const mean = new Array<number>(dims).fill(0);
@@ -155,10 +152,6 @@ function noveltyCurve(frames: Frame[], ssm: Float32Array): number[] {
 	return novelty;
 }
 
-// What the music does on the way in. Measured per moment, because tracks differ: some build for
-// eight seconds, some cut out entirely for one bar, some simply arrive. A fixed run-in gesture was
-// wrong on most of them - it dimmed through tracks that were already dimming and dimmed through
-// tracks that were accelerating.
 // a beat of this track, from the bar grid the analysis already sent. Four to a bar is the
 // assumption the rest of the project makes too; with no bars at all, a moderate 120bpm
 function beatOf(bars: Bar[]): number {
@@ -166,18 +159,21 @@ function beatOf(bars: Bar[]): number {
 	return durations.length > 0 ? durations[durations.length >> 1] / 4 : 0.5;
 }
 
+// What the music does on the way in, measured per moment, because tracks differ: some build for
+// eight seconds, some cut out entirely for one bar, some simply arrive. A fixed run-in gesture
+// would be wrong on most of them.
 function describeLeadIn(
 	curve: CurvePoint[],
 	t: number,
 	beatSec: number
 ): { leadSeconds: number; dip: number; build: number } {
-	// A ONE-SECOND MEAN, not the curve itself. The loudness curve is a per-segment attack-decay
-	// sawtooth (DESIGN-RULES §5a), and every question below - how far down does it dip, how far up
-	// does it build, how long has it been away from its usual level - asks about the shape of the
-	// music over seconds. Asked of the raw curve they answer about the sawtooth instead: `highest`
-	// and `lowest` become its ripple, so a third of all moments measured `build` at the ceiling,
-	// and `leadSeconds` became "when did the ripple last cross the baseline", which is why HALF of
-	// all moments across 89 dumps reported the shortest lead-in the clamp allows.
+	// A one-second mean, not the curve itself. The loudness curve is a per-segment attack-decay
+	// sawtooth, and every question below - how far down does it dip, how far up does it build, how
+	// long has it been away from its usual level - asks about the shape of the music over seconds.
+	// Asked of the raw curve they answer about the sawtooth instead: `highest` and `lowest` become
+	// its ripple, a third of all moments measure `build` at the ceiling, and `leadSeconds` becomes
+	// "when did the ripple last cross the baseline" (half of all moments across 89 dumps report the
+	// shortest lead-in the clamp allows).
 	const level = (at: number) => {
 		let sum = 0;
 		let n = 0;
@@ -200,16 +196,14 @@ function describeLeadIn(
 	let lowest = Infinity;
 	let highest = 0;
 	let deviatingSince = 0;
-	// A RUN-IN MAY TOUCH THE TRACK'S NORMAL LEVEL ON ITS WAY IN. It was required to be contiguous
-	// right up to the downbeat, and it is not: the bar a track holds its breath in, immediately
-	// before the drop, sits at about its usual level by definition. So a single normal sample reset
-	// the answer, and it reset it at the END of the walk, which is why the raw value came back at
-	// 0.25s and the clamp turned it into 1.2s for HALF of all moments across 89 dumps - re-measured
-	// 2026-09-16 on the shipping code: 49%, and for those the music is away from baseline for a
-	// median 53% of the eight seconds before, earliest deviation 7.75s out. The run-in was there
-	// every time; this is what was throwing it away.
+	// A run-in may touch the track's normal level on its way in. The bar a track holds its breath in,
+	// immediately before the drop, sits at about its usual level by definition, so a single normal
+	// sample must not end the walk: it would reset the answer at the end, the raw value would come
+	// back at 0.25s and the clamp would turn it into 1.2s (49% of moments across 89 dumps). For
+	// those, the music is away from baseline for a median 53% of the eight seconds before, with the
+	// earliest deviation 7.75s out.
 	//
-	// So only a SUSTAINED return ends it, and "sustained" is a beat of this track, like every other
+	// So only a sustained return ends it, and "sustained" is a beat of this track, like every other
 	// time constant here. Measured over 345 moments: one beat takes the clamp share from 49% to 30%
 	// and the median lead from 1.25s to 2.75s. Longer tolerances keep going - half a bar gives 16%
 	// - but they push the same mass onto the ceiling instead, and 8s is the width of the window
@@ -238,38 +232,35 @@ function describeLeadIn(
 	};
 }
 
-// TURNED OFF, deliberately, and the reason is worth keeping.
+// Turned off, deliberately.
 //
-// The listener reported that a chorus felt right on a track where this detector stays SILENT, and
-// wrong on both tracks where it fires. Whatever the anticipation adds is currently subtracting: the
-// audio-driven response - section intensity, strike density, the drum accumulation - already gives
-// a chorus its arrival without being told where one is.
+// With this detector on, a chorus felt right on a track where it stays silent and wrong on both
+// tracks where it fires. Whatever the anticipation adds is currently subtracting: the audio-driven
+// response - section intensity, strike density, the drum accumulation - already gives a chorus its
+// arrival without being told where one is.
 //
-// The scoreboard that said otherwise cannot be trusted either. Its labels for one track turned out
-// to be the times the visualiser FIRED rather than the times a chorus happens, which means that
-// track's perfect 3/3 was the detector being scored against its own output. Everything below still
-// runs under `npm run structure`; nothing acts on it until the labels are re-collected by ear.
+// The labelled scoreboard cannot be trusted either: the labels for one track turned out to be the
+// times the visualiser fired rather than the times a chorus happens, so its perfect 3/3 was the
+// detector being scored against its own output. Nothing acts on this code until the labels are
+// re-collected by ear.
 const ENABLED = false;
 
 // ---------------------------------------------------------------------------------------------
 // What actually ships, while the chorus detector above stays off.
 //
-// This is NOT the loudness-based chorus detection that failed three times. It does not claim to find
-// a chorus and it is not scored against one. It finds the handful of places where THIS TRACK's own
-// loudness takes its largest sustained step up, and calls those the moments worth a release. The
-// distinction matters: the old versions asserted a musical meaning the data could not support, and
-// were wrong about half the time. This asserts only what it measured - the music got noticeably
-// bigger here - which is either true or false about the curve in front of it.
+// This is not the loudness-based chorus detection that failed three times. It does not claim to
+// find a chorus and it is not scored against one. It finds the handful of places where this
+// track's own loudness takes its largest sustained step up, and calls those the moments worth a
+// release. It asserts only what it measured - the music got noticeably bigger here - which is
+// either true or false about the curve in front of it.
 //
-// It exists because the release had nothing behind it. With the detector off, `impact` never fired
-// on any of the twenty real tracks measured - not one frame - so the layers preset was driving both
-// its brightness lift and its speed lift off a hand-made online heuristic instead. That fired 68
-// times in three and a half minutes on one track, twice within the same second more than once, and
-// the report was exactly what you would expect: "a crude glow, and a crude acceleration hand in
-// hand with it, out of place". Rate is the whole problem. A payoff that happens once a phrase is
-// not a payoff, and no amount of tuning its amplitude fixes that.
+// It exists because the release needs moments to fire on. With the detector off, `impact` never
+// fired on any of the twenty real tracks measured, and a hand-made online heuristic in its place
+// fired 68 times in three and a half minutes on one track, twice within the same second more than
+// once. Rate is the whole problem: a payoff that happens once a phrase is not a payoff, and no
+// amount of tuning its amplitude fixes that.
 //
-// Bounded BY CONSTRUCTION rather than by a threshold: the best few steps in the track, spaced out,
+// Bounded by construction rather than by a threshold: the best few steps in the track, spaced out,
 // capped. A track with no dynamics gets none, which is the honest answer for a track with no
 // dynamics.
 const RISE_BEFORE_SEC = 4;
@@ -309,13 +300,13 @@ function findRises(curve: CurvePoint[], bars: Bar[]): Moment[] {
 		const before = mean(t - RISE_BEFORE_SEC, t - 0.4);
 		const after = mean(t + 0.4, t + RISE_AFTER_SEC);
 		times.push(t);
-		// Proportional, not absolute: a quiet track's own biggest moment is as much of an event to its
+		// Proportional, not absolute: a quiet track's own biggest moment is as much of an event to a
 		// listener as a loud track's, and dB differences between masters say nothing about music.
 		//
-		// The denominator has a floor, though, or the largest rise in every track is the track
-		// STARTING - coming up out of silence divides by nothing and wins by a mile. Measured: two
-		// tracks put their top moment at 0:08 with no dip in front of it, which is a release fired at
-		// the first bar of the song.
+		// The denominator has a floor, or the largest rise in every track is the track starting:
+		// coming up out of silence divides by nothing and wins by a mile. Without it, tracks put their
+		// top moment in the first seconds with no dip in front of it, a release fired at the first bar
+		// of the song.
 		rises.push((after - before) / Math.max(before, median * 0.4));
 	}
 	const best = Math.max(0, ...rises);
@@ -334,12 +325,11 @@ function findRises(curve: CurvePoint[], bars: Bar[]): Moment[] {
 		picked.push({ t, rise });
 	}
 
-	// WHERE THE LEVEL ACTUALLY STEPS, not where the window that noticed it begins. `rises` compares
+	// Where the level actually steps, not where the window that noticed it begins. `rises` compares
 	// the four seconds before a time with the three after, so it peaks as soon as the rise enters
-	// the trailing window - which is up to three seconds EARLY. Measured on Daze: the moment landed
-	// at 1:36 with the track's top score while the loudness there is flat at 0.40, and the actual
-	// step is at 1:38. The picture braced for four seconds and then flashed at nothing, reported as
-	// "inexplicable glow" - and the detector was not wrong about the rise, only about when.
+	// the trailing window - up to three seconds early. The moment then lands with the track's top
+	// score while the loudness there is still flat, and the picture braces for four seconds and
+	// flashes at nothing. The detector is right about the rise, only wrong about when.
 	//
 	// So each pick is refined to the steepest point of the second-scale curve near it. A one-second
 	// mean either side, because the raw curve is a per-segment sawtooth and its own slope is noise.
@@ -355,24 +345,22 @@ function findRises(curve: CurvePoint[], bars: Bar[]): Moment[] {
 			}
 		}
 		p.t = bestT;
-		// NO SECTION-BOUNDARY SNAP. Tried and reverted the same day: 40% of moments have a boundary
-		// within two seconds and 66% of those have it later, median +0.53s, which looked like a
-		// systematic bias worth correcting. It is not the ear's bias. Moving the flash forward onto
-		// the boundary made the drop land "kardinal'no" late - the boundary is where Spotify's
-		// segmentation decides a new section begins, which is at or after the arrival, while the
-		// picture has to fire ON it. The curve's own steepest point stays.
+		// No snap to the section boundary: 40% of moments have a boundary within two seconds and 66%
+		// of those have it later (median +0.53s). Moving the flash onto the boundary makes the drop
+		// land late - the boundary is where Spotify's segmentation decides a new section begins,
+		// which is at or after the arrival, while the picture has to fire on it. The curve's own
+		// steepest point stays.
 	}
 
-	// HOW BIG A MOMENT IS, IS HOW MUCH OF IT IS STILL THERE TEN SECONDS LATER.
+	// How big a moment is: how much of it is still there ten seconds later.
 	//
 	// `rise` measures the momentary jump - three seconds against the four before - so a bump gets the
-	// same score as a step. Both reports of an inexplicable flash were exactly that: Daze at 1:37,
-	// scored the track's best at 1.00 while its one-second mean goes 0.42 -> 0.57 -> 0.38, a bump a
-	// second and a half wide; and Borderline at 0:19, the same shape. Measured over 356 moments, the
-	// two the listener flagged sit at 0.15 and 0.12 on this statistic while the ones nobody
-	// complained about sit at 0.45 to 1.4. Nothing else separated them.
+	// same score as a step. One track scored its best at 1.00 on a bump whose one-second mean goes
+	// 0.42 -> 0.57 -> 0.38, a second and a half wide; another had the same shape. Measured over 356
+	// moments, the bumps sit at 0.15 and 0.12 on this statistic while the genuine steps sit at 0.45
+	// to 1.4. Nothing else separated them.
 	//
-	// So the spike still FINDS the candidates and the hold decides what they are worth. 7% of all
+	// So the spike still finds the candidates and the hold decides what they are worth. 7% of all
 	// moments come out at or below zero - the music ends up quieter than it started - and those stop
 	// being events at all.
 	const holdOf = (t: number) => {
@@ -381,26 +369,18 @@ function findRises(curve: CurvePoint[], bars: Bar[]): Moment[] {
 	};
 	const holds = picked.map(p => holdOf(p.t));
 	const beatSec = beatOf(bars);
-	// AGAINST A FIXED REFERENCE, NOT AGAINST THE TRACK'S OWN BEST. Dividing by the largest rise in
-	// this track guaranteed every track exactly one moment at full size, however flat it was, so a
-	// song whose biggest lift is a fifth of another's was drawn with the same drop.
+	// Size is against a fixed reference, not against the track's own best. Dividing by the largest
+	// rise in the track would give every track exactly one moment at full size, however flat it was.
 	//
 	// Measured over 84 dumps, the biggest sustained rise a track has spans 0.23 to 3.65 of the level
-	// it came from - p05 0.39, median 1.01, p95 2.55. Children of the City, reported at 1:44 as a
-	// glow with nothing under it, sits at 0.59: rank 20 of 84, the bottom quarter, and it was being
-	// given a full drop because it was the best that track had.
+	// it came from - p05 0.39, median 1.01, p95 2.55. Full size means the music settles at twice what
+	// it rose from. That is a hold of 1, which is also the median of the corpus - so half of all
+	// tracks still reach the top and the flat ones stop inventing one.
 	//
-	// FULL SIZE MEANS THE MUSIC SETTLES AT TWICE WHAT IT ROSE FROM. That is a hold of 1, which is
-	// also the median of the corpus - so half of all tracks still reach the top and the flat ones
-	// stop inventing one.
-	//
-	// It was `hold / Math.max(1, ...holds)`, which is only half of that: the ceiling was fixed, and
-	// every track whose best hold went ABOVE 1 still divided all of its moments by its own best -
-	// 48 of 91 tracks. So a track with one enormous moment had every other moment scaled down by
-	// how big that one was, which is the same fault the paragraph above says was removed, pointing
-	// the other way. Measured by running this detector with the divisor pinned: 47 of 345 moments
-	// came out more than 0.15 smaller than the fixed reference gives, worst 0.61 - on Ecophony
-	// Rinne the sizes were 0.23 1 0.39 0.17 0.04 where they should be 0.59 1 1 0.46 0.1.
+	// Fixing only the ceiling (`hold / Math.max(1, ...holds)`) is half of that: a track whose best
+	// hold goes above 1 (48 of 91 tracks) would still scale all of its moments by its own best.
+	// With the divisor pinned, 47 of 345 moments come out more than 0.15 smaller than the fixed
+	// reference gives, worst 0.61.
 
 	return picked
 		.map((p, i) => {
@@ -449,10 +429,10 @@ export function findMoments(segments: Segment[], bars: Bar[], curve: CurvePoint[
 	const loudRank = new Array<number>(n).fill(0);
 	loudOrder.forEach((entry, position) => (loudRank[entry.i] = n > 1 ? position / (n - 1) : 0.5));
 
-	// Boundaries alone are not the answer. Novelty is just as high where a chorus ENDS as where it
-	// begins, so a boundary list contains every verse start too - which is what produced a spurious
-	// firing for every real one. The question is not "where does something change" but "which of
-	// these blocks is the chorus", and that is answered by grouping the blocks and looking at which
+	// Boundaries alone are not the answer. Novelty is just as high where a chorus ends as where it
+	// begins, so a boundary list contains every verse start too, which produces a spurious firing
+	// for every real one. The question is not "where does something change" but "which of these
+	// blocks is the chorus", and that is answered by grouping the blocks and looking at which
 	// group repeats while being loud and bright.
 	const boundaries: number[] = [];
 	const noveltyFloor = maxNovelty * 0.25;
@@ -529,11 +509,10 @@ export function findMoments(segments: Segment[], bars: Bar[], curve: CurvePoint[
 			last = Math.max(last, blocks[b].t);
 		}
 		const count = group.members.length;
-		// A chorus is SPREAD THROUGH the song - it comes back much later, that is what makes it a
-		// chorus. A group of neighbouring blocks is one section that got over-segmented, and those
-		// were exactly the false answers on the tracks that failed completely: three "choruses"
-		// inside a thirty-second stretch. Requiring the members to span a real fraction of the track
-		// costs nothing and rules that out.
+		// A chorus is spread through the song - it comes back much later, that is what makes it a
+		// chorus. A group of neighbouring blocks is one section that got over-segmented, and gave
+		// false answers such as three "choruses" inside a thirty-second stretch. Requiring the
+		// members to span a real fraction of the track costs nothing and rules that out.
 		const trackSeconds = Math.max(1, frames[n - 1].t - frames[0].t);
 		const spread = (last - first) / trackSeconds;
 		if (spread < 0.2) continue;
@@ -550,24 +529,23 @@ export function findMoments(segments: Segment[], bars: Bar[], curve: CurvePoint[
 		} else if (score > runnerUpScore) runnerUpScore = score;
 	}
 	// Nothing repeats convincingly: say nothing. A missed chorus is invisible, an invented one is a
-	// visible malfunction, and this detector has already spent that credit.
+	// visible malfunction.
 	//
 	// The margin test is the same idea applied to ambiguity rather than absence. When the best group
 	// barely beats the next one, the track has not been understood - two candidate readings of its
-	// structure scored alike and one was picked by a hair. Scored across eight labelled tracks,
-	// firing anyway made roughly half of all firings wrong; staying quiet on those tracks costs
+	// structure scored alike and one was picked by a hair. Across eight labelled tracks, firing
+	// anyway made roughly half of all firings wrong; staying quiet on those tracks costs
 	// coverage and buys the thing that actually matters, which is that what does fire is right.
 	if (!chorus) return [];
 	// A reading with only two occurrences is as easily an intro and an outro as a chorus
 	if (chorus.members.length < MIN_OCCURRENCES) return [];
 	if (bestGroupScore < runnerUpScore * CONFIDENCE_MARGIN) return [];
 
-	// A last veto, and it comes from the listener's own observation: the false firings looked MORE
-	// intense than the real ones and always out of place. That is exactly what a gesture with no
-	// musical support looks like - at a real chorus the music grows alongside it and the two merge,
-	// while at an invented one the visual is the only thing happening on screen.
+	// A last veto: false firings look more intense than real ones and out of place. That is what a
+	// gesture with no musical support looks like - at a real chorus the music grows alongside it and
+	// the two merge, while at an invented one the visual is the only thing happening on screen.
 	//
-	// Loudness could never FIND a chorus; three versions proved that. It can still veto one. If the
+	// Loudness can never find a chorus, but it can still veto one. If the
 	// ten seconds after a moment are no bigger than the ten before, nothing arrived there.
 	const grew = (t: number) => {
 		let before = 0;

@@ -16,6 +16,12 @@ The picture is driven by Spotify's audio analysis of the track (notes, beats, ba
 
 <p align="center"><img src="branding/screens/drift.png" alt="Drift" width="80%"></p>
 
+## Settings
+
+Press `T` for the settings of the preset on screen. The main ones are shown first, the rest are under *More settings*. Hover over any of them to see what it does.
+
+Colours: *Cover* takes them from the album art, *Custom* lets you pick two or three of your own. *Gradient follows* sets what moves a colour from the first to the last, for example the height of the mountains or how loud the music is. Each preset keeps its own colours.
+
 ## Install
 
 vivy needs [Spicetify](https://spicetify.app). If you don't have it, install it first using their [getting started guide](https://spicetify.app/docs/getting-started), and check that Spotify starts with it.
@@ -57,7 +63,8 @@ vivy only talks to Spotify:
 
 - It fetches each track's analysis using your logged-in session.
 - It takes the cover colour through Spicetify.
-- It stores the chosen preset, slider values and mini window position in Spotify's local storage.
+- It reads the cover image to find its colours.
+- It stores the chosen preset, slider values, colours and mini window position in Spotify's local storage.
 
 There is no analytics and no other server. It plays an inaudible tone to keep the audio device awake, which it needs to measure output latency. Nothing is recorded.
 

@@ -1,7 +1,7 @@
 // ---- the colours --------------------------------------------------------------------------------------------
 // Each preset has its own colour settings, set in the knobs panel and kept across restarts:
 //   cover    the cover's own palette, three colours Spotify extracts from the art (dark, vibrant, light)
-//   custom   two or three colours the listener picked
+//   custom   two or three colours picked in the panel
 // and what moves a colour along that palette - the gradient. What a gradient can follow depends on what
 // the preset is made of, so each preset names its own (Ridgeline: the height of a ridge, its depth, the
 // sound; Drift: its layers, depth, the sound of each mark, the music). `harmony` is how far the key of
@@ -69,8 +69,8 @@ export const rgbToHex = ({ r, g, b }: Rgb) =>
 
 // The palette a preset draws with this frame, as HSL stops, first to last.
 // The cover's three colours each keep their place in a band of lightness, dark to light, with enough
-// colour to read. Pulled all into one band, as the single cover colour used to be, three different
-// colours came out as one - and a gradient between them was no gradient at all.
+// colour to read. Pulled all into one band, three different
+// colours come out as one, and a gradient between them is no gradient.
 // Picked colours are kept as picked, only kept off pure black and white, where there is no light left
 // to shape anything with.
 const COVER_BANDS = [
@@ -92,13 +92,13 @@ export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 	});
 }
 
-// THE COVER'S OWN COLOURS, BY AREA, for a preset whose light adds up on black (Drift): there a
+// The cover's own colours, by area, for a preset whose light adds up on black (Drift): there a
 // difference in lightness hardly reads - a brighter stroke just looks nearer - and the dark, vibrant
 // and light colour Spotify extracts are often three shades of one hue. So the cover itself is looked
 // at: its coloured pixels, grouped by hue, and every group that covers a real part of the coloured
 // area is a colour of the palette, dark to light. A speck of another colour (a red badge on a blue
-// cover, 4% of it) is not a colour of that cover: blended into the gradient it turned blue to purple
-// to red, which the cover is not. A cover with one such group, or none, gives [] - it is of one colour,
+// cover, 4% of it) is not a colour of that cover: blended into the gradient it would turn blue to
+// purple to red. A cover with one such group, or none, gives [] - it is of one colour,
 // and the extracted shades of it are used.
 const SHARE = 0.1;
 export function coverHues(px: Uint8ClampedArray): Rgb[] {

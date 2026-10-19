@@ -3,30 +3,30 @@
 //
 //     sampleRate hopSize bandCount  (count delta delta delta ...) x bandCount
 //
-// Each band is a list of frame-index DELTAS, so a running sum times hop/sampleRate gives the times.
+// Each band is a list of frame-index deltas, so a running sum times hop/sampleRate gives the times.
 // Eight bands at 11025 Hz with a 32-sample hop - 2.9ms resolution.
 //
-// IT IS NOT A DRUM TRACK. Measured across 81 dumps, every band's own event rate is pinned near 3
+// It is not a drum track. Measured across 81 dumps, every band's own event rate is pinned near 3
 // per second whatever the tempo or the music is doing, so no single band can be a hit detector.
-// What IS usable is where the bands AGREE: a real drum is broadband and lights several at once,
+// What is usable is where the bands agree: a real drum is broadband and lights several at once,
 // while a band's own steady chatter does not line up with the others. Nothing rate-limits the
 // agreement, so it follows the music.
 //
 // Measured against the beat grid, +-50ms, 81 tracks, median:
 //
-//     the old `strike` (sharp, prominent segment)   28% precision   51% beat recall   3.5/s
+//     a segment-based detector (sharp, prominent)   28% precision   51% beat recall   3.5/s
 //     >= 3 bands agreeing                           44%             63%               3.1/s
 //     >= 4 bands agreeing                           49%             43%               1.8/s
 //
-// Three bands is better than the old detector on precision AND recall AND downbeat recall at a
-// slightly lower rate - not a trade, a strict win - so that is the threshold. (Precision is
+// Three bands beats the segment-based detector on precision, recall and downbeat recall at a
+// slightly lower rate, so that is the threshold. (Precision is
 // measured against beats because that is the only annotation the analysis carries; a genuine
 // off-beat drum counts against it, so 44% is a floor, not the true figure.)
 
 export type Hit = {
 	t: number;
 	// how many of the eight bands fired together, 3..8. A broadband hit is a kick or a snare; a
-	// thin one is a hat or a pick. This is the only measure of a hit's SIZE that comes from the
+	// thin one is a hat or a pick. This is the only measure of a hit's size that comes from the
 	// onset itself rather than from the segment it happens to fall in
 	bands: number;
 };
@@ -66,7 +66,7 @@ function clustersOf(bands: number[][]): Hit[] {
 		let j = i;
 		let mask = 0;
 		let sum = 0;
-		// everything within one cluster window of the FIRST onset, so a long roll breaks into
+		// everything within one cluster window of the first onset, so a long roll breaks into
 		// separate hits instead of merging into one wide smear
 		while (j < all.length && all[j].t - all[i].t <= CLUSTER_SEC) {
 			mask |= 1 << all[j].b;
