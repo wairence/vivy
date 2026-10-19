@@ -1,18 +1,10 @@
-analysis-dumps/
-dist/
-graphify-out/
-live-app.bundle.js
 node_modules/
-perf-serve.log
-preview-harness.bundle.js
+dist/
+analysis-dumps/
 shots/
+*.bundle.js
+perf-serve.log
 probe-log.json
 marks.jsonl
-
-# private, never published
-CLAUDE.md
-.claude/
-private/
-structure-labels.json
 # written by stamp.js on every build
 src/build-stamp.ts
