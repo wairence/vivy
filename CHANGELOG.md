@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-19
 
 - Colours: from the cover or your own (two or three, with a colour picker), and a choice of what the gradient follows. Each preset has its own.
 - Settings panel: a short explanation on hover for every setting; the main settings first, the rest under More settings.
