@@ -78,17 +78,15 @@ What the two presets read (full table in DATA.md section 3.3):
 | `timeToImpact`, `anticipation`, `windup`, `runInDip`, `runInBuild` | Drift | the brace before a moment and the speed-up into it |
 | `harmonicShift`, `brightness`, `attackSharpness` | Drift | wind turn rate and sheet light; field clock and sheet width; how far the background ducks under a flaring mark |
 
-The conductor also computes cursor, beat-grid and accumulator signals that neither preset reads, and still reads `frame.mouse` to do so. Both presets ignore the mouse.
-
 Between tracks the conductor holds `loudness` and `energy` near a rest level while the next analysis loads, then joins the new track's level over 1.5 s. This is what stops a track change from stepping every speed at once.
 
-`flowfield-common.ts` also exports `albumHsl`, `hslToRgb`, `publishDiagnostics` / `lastDiagnostics`, and `getVariant` / `setVariant`. Nothing in the live presets reads the variant.
+`flowfield-common.ts` also exports `albumHsl`, `hslToRgb` and `publishDiagnostics` / `lastDiagnostics`.
 
 ## The preset contract
 
 `types.ts`:
 
-- `PresetFrame`: `ctx` (2D context of the visible canvas), `width`, `height` (canvas pixels), `progressSec`, `isPlaying`, `audio` (`TrackAudioData | null`), `colorRgb` (eased album colour), `palette` (the cover's dark, vibrant and light colours, eased), `coverColours` (those three, then the cover's own colours by area, six in all), `mouse` (passed in, ignored by both presets).
+- `PresetFrame`: `ctx` (2D context of the visible canvas), `width`, `height` (canvas pixels), `progressSec`, `isPlaying`, `audio` (`TrackAudioData | null`), `colorRgb` (eased album colour), `palette` (the cover's dark, vibrant and light colours, eased), `coverColours` (those three, then the cover's own colours by area, six in all). There is no mouse in the frame.
 - `Preset`: `draw(frame)`. It is called every animation frame, playing or not. It owns whatever state it keeps.
 - `PresetDefinition`: `id`, `name`, optional `experimental`, `create()`.
 - `currentEnergy(frame)`: loudness-curve value, a sine when there is no analysis and playing, 0.5 when paused.
@@ -108,7 +106,7 @@ Frame loop. `render` builds a `PresetFrame` and calls `preset.draw` in a try/cat
 
 Preset switching. The chosen id is kept in `localStorage` under `vivy:preset`. On change, an effect calls the new preset's `create()` and clears the 2D canvas. The preset buttons in the top bar come from `PRESETS`; experimental ones get an "exp" tag.
 
-Input. The canvas tracks the mouse (position, speed, clicks, wheel, alt+wheel) and passes it in `frame.mouse`, but neither preset reads it. Keys, all ignored with ctrl, alt or meta held and inside text inputs:
+Input. The canvas takes no mouse input. Keys, all ignored with ctrl, alt or meta held and inside text inputs:
 
 | key | |
 |---|---|
@@ -217,7 +215,7 @@ WebGL handling.
 
 `stamp.js` writes `src/build-stamp.ts` (`BUILD` time and `DEV`). It is generated and ignored by git. A client reads `index.js` once at startup, so the stamp is how to tell a change that failed from one that never loaded.
 
-`check-presets.js` compiles `src/presets/index.ts`, `colours.ts` and `audio-sync.ts` with `tsc` into `node_modules/.cache/preset-check` and drives every preset against a fake 2D context that throws on a non-finite number, a colour channel outside 0..255, a negative alpha, a non-positive line width or a negative arc radius. It runs each preset with a synthetic analysis and with `audio: null`: 400 frames at 60 fps with a moving mouse, a seek back 40 s, then paused frames that must produce byte-identical call logs. Then every knob at its minimum and at its maximum for 200 frames. Then every colour source with every gradient, and `coverHues` on synthetic covers. Then the between-tracks level (never climbs while waiting, never steps by 0.02 in a frame) and the smooth clock (frame steps within 3%, within 2 ms of the player, a seek taken at once). It prints warnings for alpha above 1. It cannot see GPU output.
+`check-presets.js` compiles `src/presets/index.ts`, `colours.ts` and `audio-sync.ts` with `tsc` into `node_modules/.cache/preset-check` and drives every preset against a fake 2D context that throws on a non-finite number, a colour channel outside 0..255, a negative alpha, a non-positive line width or a negative arc radius. It runs each preset with a synthetic analysis and with `audio: null`: 400 frames at 60 fps, a seek back 40 s, then paused frames that must produce byte-identical call logs. Then every knob at its minimum and at its maximum for 200 frames. Then every colour source with every gradient, and `coverHues` on synthetic covers. Then the between-tracks level (never climbs while waiting, never steps by 0.02 in a frame) and the smooth clock (frame steps within 3%, within 2 ms of the player, a seek taken at once). It prints warnings for alpha above 1. It cannot see GPU output.
 
 CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck` and `npm run check` on Node 20 for every pull request and every push to `main`. The release workflow runs on a tag like `v0.1.1`: the same checks, `npm run release`, zips `index.js`, `manifest.json` and `style.css` into a `vivy` folder as `vivy.zip` and attaches it to a GitHub release.
 

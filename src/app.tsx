@@ -319,13 +319,6 @@ export default function App() {
 	// three again for a cover of one colour - see coverHues)
 	const targetColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
 	const displayColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
-	const mousePosRef = useRef({ x: 0, y: 0 });
-	const mouseClicksRef = useRef(0);
-	const mouseRightClicksRef = useRef(0);
-	const mouseDownRef = useRef(false);
-	const mouseRightDownRef = useRef(false);
-	const mouseScrollRef = useRef(0.5);
-	const mouseParticleScaleRef = useRef(0.5);
 	const presetRef = useRef<Preset>();
 	const presetMadeFor = useRef("");
 	if (!presetRef.current) {
@@ -666,67 +659,10 @@ export default function App() {
 		// The presets are written for one canvas size and scaled to whatever they are given, so the
 		// size is reported from inside the client: it is the number the tuning is relative to.
 		if (DEV) Spicetify.showNotification(`Visualizer canvas ${canvas.width}x${canvas.height}`);
-		mousePosRef.current = { x: canvas.width / 2, y: canvas.height / 2 };
 		window.addEventListener("resize", resize);
 		const boxWatch = typeof ResizeObserver === "function" ? new ResizeObserver(() => resize()) : null;
 		boxWatch?.observe(canvas);
 
-		// The mouse is tracked and handed to presets in `frame.mouse`; Ridgeline and Drift ignore it.
-		const onMouseMove = (event: MouseEvent) => {
-			const rect = canvas.getBoundingClientRect();
-			mousePosRef.current = {
-				x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-				y: ((event.clientY - rect.top) / rect.height) * canvas.height
-			};
-		};
-		canvas.addEventListener("mousemove", onMouseMove);
-
-		const onMouseDown = (event: MouseEvent) => {
-			if (event.button === 2) {
-				mouseRightClicksRef.current++;
-				mouseRightDownRef.current = true;
-			} else {
-				mouseClicksRef.current++;
-				mouseDownRef.current = true;
-			}
-		};
-		canvas.addEventListener("mousedown", onMouseDown);
-
-		// "held" is cleared on mouseup, leaving the canvas or losing focus, so a stuck state can't
-		// survive the cursor leaving the window mid-drag
-		const onMouseUp = (event: MouseEvent) => {
-			if (event.button === 2) mouseRightDownRef.current = false;
-			else mouseDownRef.current = false;
-		};
-		window.addEventListener("mouseup", onMouseUp);
-		const onMouseLeave = () => {
-			mouseDownRef.current = false;
-			mouseRightDownRef.current = false;
-		};
-		canvas.addEventListener("mouseleave", onMouseLeave);
-		window.addEventListener("blur", onMouseLeave);
-
-		// right click is a gesture of its own, not Spotify's context menu
-		const onContextMenu = (event: MouseEvent) => event.preventDefault();
-		canvas.addEventListener("contextmenu", onContextMenu);
-
-		const onWheel = (event: WheelEvent) => {
-			event.preventDefault();
-			// alt+wheel: a particle count, plain wheel: a speed fader
-			if (event.altKey) {
-				mouseParticleScaleRef.current = Math.max(
-					0,
-					Math.min(1, mouseParticleScaleRef.current - event.deltaY * 0.0006)
-				);
-			} else {
-				mouseScrollRef.current = Math.max(0, Math.min(1, mouseScrollRef.current - event.deltaY * 0.0006));
-			}
-		};
-		canvas.addEventListener("wheel", onWheel, { passive: false });
-
-		let prevMouseX = mousePosRef.current.x;
-		let prevMouseY = mousePosRef.current.y;
-		let mouseSpeed = 0;
 		const audioSync = new AudioSync();
 		const smoothClock = createSmoothClock();
 
@@ -748,12 +684,6 @@ export default function App() {
 				b: d.b + (target[i].b - d.b) * colourStep
 			}));
 
-			const mousePos = mousePosRef.current;
-			const rawSpeed = Math.hypot(mousePos.x - prevMouseX, mousePos.y - prevMouseY);
-			mouseSpeed = mouseSpeed * 0.8 + rawSpeed * 0.2;
-			prevMouseX = mousePos.x;
-			prevMouseY = mousePos.y;
-
 			const isPlaying = Spicetify.Player.isPlaying();
 			const frame: PresetFrame = {
 				ctx,
@@ -764,18 +694,7 @@ export default function App() {
 				audio: audioDataRef.current,
 				colorRgb: displayColorRef.current[1],
 				palette: displayColorRef.current.slice(0, 3),
-				coverColours: displayColorRef.current,
-				mouse: {
-					x: mousePos.x,
-					y: mousePos.y,
-					speed: mouseSpeed,
-					clicks: mouseClicksRef.current,
-					rightClicks: mouseRightClicksRef.current,
-					down: mouseDownRef.current,
-					rightDown: mouseRightDownRef.current,
-					scroll: mouseScrollRef.current,
-					particleScale: mouseParticleScaleRef.current
-				}
+				coverColours: displayColorRef.current
 			};
 			try {
 				presetRef.current!.draw(frame);
@@ -973,13 +892,6 @@ export default function App() {
 		return () => {
 			window.removeEventListener("resize", resize);
 			boxWatch?.disconnect();
-			canvas.removeEventListener("mousemove", onMouseMove);
-			canvas.removeEventListener("mousedown", onMouseDown);
-			window.removeEventListener("mouseup", onMouseUp);
-			canvas.removeEventListener("mouseleave", onMouseLeave);
-			window.removeEventListener("blur", onMouseLeave);
-			canvas.removeEventListener("contextmenu", onContextMenu);
-			canvas.removeEventListener("wheel", onWheel);
 			// leaving the visualizer page takes the little window with it: its canvas has no loop left
 			togglePipRef.current = () => {};
 			disposed = true;

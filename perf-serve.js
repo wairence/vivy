@@ -70,7 +70,7 @@ http
 				res.end("ok");
 				try {
 					const m = JSON.parse(body);
-					console.log(`  marked  ${m.track} @ ${Number(m.at).toFixed(1)}s  preset ${m.preset} variant ${m.variant}`);
+					console.log(`  marked  ${m.track} @ ${Number(m.at).toFixed(1)}s  preset ${m.preset}`);
 				} catch {
 					console.log("  marked (unparsed)");
 				}

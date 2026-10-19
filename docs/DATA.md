@@ -258,7 +258,7 @@ Between tracks (`GAP_REST` 0.12, `GAP_HOLD` 3 s, `JOIN_SECONDS` 1.5). While the 
 
 ### 3.5 Computed, not read by either live preset
 
-The conductor also computes `momentum`, `glow`, `pop`, `beatStrength`, `beatHit`, `segment`, `strike`, `lookAhead`, `sectionIntensity`, `trend`, `level`, `wander`, `speedFader`, `yAttraction`, the cursor signals (`gust*`, `chaos`, `order`, `baton`, `hand`, `trailAt`, `rippleAt`, `clicked`, `rightClicked`) and the `chaosTotal`/`orderTotal` pair. Each is described in a comment on the `Conductor` type in `flowfield-common.ts`. `app.tsx` reads `lastConducted` (every numeric field) only to write the dev-build marker, and `reportGrid` reports bar and section statistics in dev builds.
+The conductor also computes `momentum`, `glow`, `pop`, `beatStrength`, `beatHit`, `segment`, `strike`, `lookAhead`, `sectionIntensity`, `trend` and `level`. Each is described in a comment on the `Conductor` type in `flowfield-common.ts`. `app.tsx` reads `lastConducted` (every numeric field) only to write the dev-build marker, and `reportGrid` reports bar and section statistics in dev builds.
 
 `strike` is a segment start that has a rhythm hit within 60 ms, with strength from the band count (0.6 for 3 bands up to 1 for 8). Without a `rhythmstring` it falls back to a sharp, prominent segment. Fired directly off the onsets rather than on the segment clock it is a better detector and a worse picture: the light landed on the beat 24% of the time against 41%, because everything else runs on the segment clock and two event streams smear each other.
 

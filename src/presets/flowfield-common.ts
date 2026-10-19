@@ -57,9 +57,7 @@ const JOIN_SECONDS = 1.5;
 const IMPACT_RISE = 0.7;       // brightness swells for this long into the moment
 const IMPACT_FALL = 1.8;       // and falls away over this long after it
 
-// Shared plumbing for the presets: the Conductor turns a frame's audio analysis (and the cursor)
-// into eased signals. The cursor-driven ones (gust*, baton, hand, trailAt, rippleAt, clicked,
-// chaos/order, speedFader, yAttraction) are computed here but not read by Ridgeline or Drift.
+// Shared plumbing for the presets: the Conductor turns a frame's audio analysis into eased signals.
 
 export type Conductor = {
 	dt: number;
@@ -140,77 +138,11 @@ export type Conductor = {
 	// than a step. Read this to spend a budget on the chorus - particles, size, brightness - instead
 	// of spreading it evenly over a track that is not evenly interesting. 0.5 with no sections
 	sectionIntensity: number;
-	// cursor: down-flick -> chaos, up-flick -> order. Both eased, both global (the field's mood), and both
-	// decay back to neutral within a second or so - a single flick's instant response
-	chaos: number;
-	order: number;
-	// chaos/order including a slow-decaying baseline that repeated flicking builds up over tens of
-	// seconds and that fades back out over roughly a minute - so conducting for a while actually
-	// leaves the piece changed for a while, the way real conducting shapes a performance's arc,
-	// rather than a gesture's effect fully evaporating the instant the flick ends. Structural/visual
-	// formulas should read these, not the raw pulses above, unless they specifically want "only
-	// during the flick itself"
-	chaosTotal: number;
-	orderTotal: number;
 	// fast (~2s) vs slow (~20s) energy average: trend is + while a section is building, - while it's
 	// settling; level is roughly "how loud is this whole stretch". Lets a preset's structure respond
 	// to the music's actual arc instead of only to per-frame loudness
 	trend: number;
 	level: number;
-	// a slow (~2 minute period), audio- and gesture-independent wander - purely so a preset never
-	// sits at one fixed structural resting point for the length of a whole song
-	wander: number;
-	// cursor: the direction it is actually moving in right now, and how hard - both eased
-	gustAngle: number;
-	gustStrength: number;
-	// how consistent that direction has been, 0..1 - gustAngle/gustStrength alone can't tell a real
-	// swipe from fast erratic wiggling. This is the magnitude of the eased direction vector before it
-	// is collapsed into an angle: a steady direction keeps it near 1, a direction that keeps
-	// changing partially cancels itself out and drags it toward 0
-	gustCoherence: number;
-	// ---- the baton (cursor) ---------------------------------------------------------------------
-	// The only shape input may take: a magnitude. No position in it, no direction in it, and
-	// nothing local - the same number everywhere on the picture. Raw input setting direction fails
-	// because input is on a different clock: a hand moves on human whim, the picture moves on the
-	// music, and anything that lets the first into the geometry writes a discontinuity there is
-	// nothing to smooth against.
-	//
-	// So this measures how large the gesture is, in units of the picture crossed per bar of this
-	// track, and it is eased on the music's clock - a flick arrives as a swell over a bar, never as
-	// a step. Both are 0 with the pointer at rest.
-	/** the gesture, over a bar - the slow, structural read. 0..1 */
-	baton: number;
-	/** the same gesture over a beat - the quick read, so the two channels it drives cannot fuse */
-	hand: number;
-	/**
-	 * How brightly the pointer's recent path passes through (x, y), 0..1 - the trace it leaves
-	 * behind it as it moves.
-	 *
-	 * It lights a particle that is already there and never draws a shape of its own, so there is
-	 * nothing to see where there is nothing already. It is a path, not a disc around the cursor - a
-	 * resting pointer's mark decays to nothing within a beat - and it is bounded small at the source.
-	 *
-	 * Light only. It must never reach an angle or a speed: the trail is sampled from raw pointer
-	 * position, which must not enter the geometry.
-	 */
-	trailAt: (x: number, y: number) => number;
-	/**
-	 * A click, as a glow where it landed and a ring spreading out of it, 0..1 at (x, y).
-	 *
-	 * Light and turbulence only, never speed: the ring is a narrow band, and it crosses a stationary
-	 * particle in about fifty milliseconds. Brightness may move that fast; a stroke length may not,
-	 * and speed times the frame is stroke length.
-	 */
-	rippleAt: (x: number, y: number) => number;
-	// true on exactly the frame a click was registered - trigger one-shot effects (a ripple) off this
-	clicked: boolean;
-	// same, right mouse button - a different one-shot gesture
-	rightClicked: boolean;
-	// scroll wheel as a global speed fader - eased towards the raw scroll knob, not applied instantly,
-	// so a big wheel tick ramps the speed rather than snapping it
-	speedFader: number;
-	// cursor Y: +1 attract (top) .. -1 repel (bottom), 0 dead centre
-	yAttraction: number;
 	// eased timbre[1] (spectral brightness), 0..1
 	brightness: number;
 	// how percussive the current segment's own attack is, 0..1 - from loudness_max_time (how long the
@@ -231,15 +163,6 @@ export type Conductor = {
 // Call this only on frames that actually render - a paused frame must not advance any of it.
 export function createConductor() {
 	let lastTime: number | null = null;
-	let lastClicks = 0;
-	let lastRightClicks = 0;
-	let prevMouseX: number | null = null;
-	let prevMouseY: number | null = null;
-	let chaos = 0;
-	let order = 0;
-	let gustDirX = 0;
-	let gustDirY = 0;
-	let gustStrength = 0;
 	let momentum = 0;
 	let glow = 0;
 	let pop = 0;
@@ -273,148 +196,17 @@ export function createConductor() {
 	let harmonicShift = 0;
 	let harmonicShiftTarget = 0;
 	let prevPitches: number[] | null = null;
-	let chaosBaseline = 0;
-	let orderBaseline = 0;
-	let wanderTime = 0;
-	let scrollSmooth = 0.5;
-	// where the pointer was last frame, how far it has travelled recently, and the two eased reads
-	let batonPrevX: number | null = null;
-	let batonPrevY: number | null = null;
-	let baton = 0;
-	let hand = 0;
-	// the pointer's recent path: a point is laid down every time it has moved far enough for the
-	// spacing to be even, and each one fades on its own clock
-	const trail: { x: number; y: number; born: number }[] = [];
-	let trailClock = 0;
-	let laidX: number | null = null;
-	let laidY: number | null = null;
-	// clicks, each one a glow and a ring going out of it
-	const rings: { x: number; y: number; born: number }[] = [];
 	const trendTracker = createEnergyTrend();
 	// this track's own middle loudness, worked out once when the analysis arrives
 	let curveMedian = 0.4;
 	let medianFor: unknown = null;
 
 	return (frame: PresetFrame): Conductor => {
-		const { width, height, progressSec, audio, mouse } = frame;
+		const { width, height, progressSec, audio } = frame;
 
 		const dt = lastTime !== null ? Math.max(0, Math.min(0.05, progressSec - lastTime)) : 0;
 		lastTime = progressSec;
 		const scale = Math.min(width, height);
-
-		// ---- the baton ---------------------------------------------------------------------------
-		const beatSec = audio && audio.tempo > 40 ? 60 / audio.tempo : 0.5;
-		const barSec = beatSec * 4;
-		if (batonPrevX === null || batonPrevY === null) {
-			batonPrevX = mouse.x;
-			batonPrevY = mouse.y;
-		}
-		const moved = Math.hypot(mouse.x - batonPrevX, mouse.y - batonPrevY);
-		batonPrevX = mouse.x;
-		batonPrevY = mouse.y;
-		// How fast the hand is moving right now, against a rate of twice the picture's short side per
-		// bar of this track. A real unit rather than a number: it holds at any window size and tempo.
-		//
-		// Distance accumulated over a bar and then eased over another would be two bars of lag on the
-		// answer to the hand, and read as dead. Geometry may not step, but that does not make input
-		// wait for the music: a ramp that begins on the frame of the movement and takes eighty
-		// milliseconds to get there is instant to a hand and continuous to a trail, with no
-		// discontinuity anywhere in it. The rule is about direction, not latency.
-		const swept = dt > 0 ? Math.min(1, moved / dt / ((scale * 2) / barSec)) : 0;
-		// Up in eighty milliseconds, down on the music's clock. The asymmetry is the whole point: the
-		// picture answers the hand at once and lets go over a bar, so a flick swells and settles rather
-		// than blinking. Two falls off one rise on purpose - a bar and a beat are far enough apart that
-		// the channels they drive stay separate things instead of one knob pushed twice.
-		const grab = 1 / 0.08;
-		baton += (swept - baton) * Math.min(1, (swept > baton ? grab : 1 / barSec) * dt);
-		hand += (swept - hand) * Math.min(1, (swept > hand ? grab : 1 / beatSec) * dt);
-
-		// ---- the trace the pointer leaves ----------------------------------------------------------
-		// Points are laid down by distance, not by frame, so a slow hand and a fast one leave the same
-		// ribbon rather than the slow one leaving a dense clot - a per-frame sample would concentrate
-		// exactly where the pointer lingers, which is a bright spot under a resting pointer.
-		trailClock += dt;
-		const trailLife = beatSec * 1.2;
-		// A reach of 0.17 of the short side, ten times the area of 0.055: at that size the hand touched
-		// five to thirteen strokes out of four hundred and measured 1.2-4.2% of the light the ground
-		// was emitting, which is invisible. Local is right; local and tiny is not.
-		const trailRadius = scale * 0.17;
-		// eight points across the radius whatever the radius is, so the sum below does not have to be
-		// renormalised every time the reach changes
-		const trailStep = trailRadius / 8;
-		// Spacing is measured from the last place a point was laid, which outlives the trail itself.
-		// Read from the head of the buffer instead, once the ribbon had aged out from under a resting
-		// pointer the buffer would be empty, a fresh point would go down at full strength, fade over
-		// its beat and a bit, and the whole thing would repeat - a spot switching on and off on the
-		// beat under a hand that is not moving.
-		if (laidX === null || laidY === null) {
-			laidX = mouse.x;
-			laidY = mouse.y;
-		} else if (mouse.clicks !== lastClicks || mouse.rightClicks !== lastRightClicks) {
-			// a click is the hand touching the picture, so it leaves a point even from a standstill -
-			// otherwise a press with a motionless pointer has nowhere to happen
-			laidX = mouse.x;
-			laidY = mouse.y;
-			trail.push({ x: mouse.x, y: mouse.y, born: trailClock });
-		} else if (Math.hypot(mouse.x - laidX, mouse.y - laidY) > trailStep) {
-			laidX = mouse.x;
-			laidY = mouse.y;
-			trail.push({ x: mouse.x, y: mouse.y, born: trailClock });
-		}
-		while (trail.length > 0 && trailClock - trail[0].born > trailLife) trail.shift();
-		if (trail.length > 96) trail.shift();
-		// ---- a click, as a glow and a ring ---------------------------------------------------------
-		// Both halves are measured in the music's own units: the ring crosses the short side of the
-		// picture in a beat and a half and the whole thing is gone in a bar, so a click on a slow
-		// track spreads slowly and on a fast one quickly. Nothing here is in seconds.
-		if (mouse.clicks !== lastClicks || mouse.rightClicks !== lastRightClicks)
-			rings.push({ x: mouse.x, y: mouse.y, born: trailClock });
-		const ringLife = barSec;
-		const ringSpeed = scale / (beatSec * 1.5);
-		while (rings.length > 0 && trailClock - rings[0].born > ringLife) rings.shift();
-		if (rings.length > 8) rings.shift();
-		const rippleAt = (x: number, y: number) => {
-			let sum = 0;
-			for (let i = 0; i < rings.length; i++) {
-				const age = trailClock - rings[i].born;
-				if (age < 0) continue;
-				const fade = 1 - age / ringLife;
-				const d = Math.hypot(x - rings[i].x, y - rings[i].y);
-				// the glow: it stays where the click landed and goes out over a beat, so a press has a
-				// body even before the ring has travelled anywhere
-				const glowR = scale * 0.11;
-				if (d < glowR) {
-					const g = 1 - d / glowR;
-					sum += g * g * Math.max(0, 1 - age / beatSec);
-				}
-				// the ring: the band widens as it travels, which is both what a real ripple does and what
-				// keeps it from turning into a hard edge once it is large
-				const r = ringSpeed * age;
-				const band = scale * 0.045 + r * 0.22;
-				const off = Math.abs(d - r) / band;
-				if (off < 1) {
-					const e = 1 - off;
-					sum += e * e * fade * fade * 1.3;
-				}
-			}
-			return Math.min(1, sum);
-		};
-
-		const trailAt = (x: number, y: number) => {
-			let sum = 0;
-			for (let i = 0; i < trail.length; i++) {
-				const dx = x - trail[i].x;
-				const dy = y - trail[i].y;
-				const d2 = dx * dx + dy * dy;
-				if (d2 > trailRadius * trailRadius) continue;
-				// age fades it out, distance shapes it, and both are smooth in their own variable, so a
-				// particle moving through the ribbon reads a curve rather than an edge
-				const fade = 1 - (trailClock - trail[i].born) / trailLife;
-				sum += fade * fade * (1 - Math.sqrt(d2) / trailRadius);
-			}
-			// a stroke sitting on the path reads about 1, one at half the reach about a quarter
-			return Math.min(1, sum * 0.14);
-		};
 
 		if (audio && audio.loudnessCurve !== medianFor) {
 			medianFor = audio.loudnessCurve;
@@ -558,50 +350,10 @@ export function createConductor() {
 		}
 		momentum += (hitTarget - momentum) * Math.min(1, (hitTarget > momentum ? 4 : 0.4) * dt);
 
-		const clicked = mouse.clicks !== lastClicks;
-		lastClicks = mouse.clicks;
-
-		const rightClicked = mouse.rightClicks !== lastRightClicks;
-		lastRightClicks = mouse.rightClicks;
-
-		scrollSmooth += ((mouse.scroll || 0) - scrollSmooth) * Math.min(1, 1.8 * dt);
-
-		const dxMove = prevMouseX !== null ? mouse.x - prevMouseX : 0;
-		const dyMove = prevMouseY !== null ? mouse.y - prevMouseY : 0;
-		prevMouseX = mouse.x;
-		prevMouseY = mouse.y;
-		const moveDist = Math.hypot(dxMove, dyMove);
-		const moveSpeed = dt > 0 ? moveDist / dt : 0;
-
-		// threshold deliberately well above ordinary cursor movement - only a real conductor's flick
-		// fires this, not "the cursor happened to drift downward"
-		const flickThreshold = scale * 2.2;
-		const chaosTarget = Math.min(1, (dt > 0 ? Math.max(0, dyMove) / dt : 0) / flickThreshold);
-		chaos += (chaosTarget - chaos) * Math.min(1, (chaosTarget > chaos ? 6 : 3) * dt);
-		const orderTarget = Math.min(1, (dt > 0 ? Math.max(0, -dyMove) / dt : 0) / flickThreshold);
-		order += (orderTarget - order) * Math.min(1, (orderTarget > order ? 6 : 3) * dt);
-
-		if (moveDist > 0.6) {
-			gustDirX += (dxMove / moveDist - gustDirX) * Math.min(1, 10 * dt);
-			gustDirY += (dyMove / moveDist - gustDirY) * Math.min(1, 10 * dt);
-		}
-		const gustTarget = Math.min(3, moveSpeed / (scale * 0.4));
-		gustStrength += (gustTarget - gustStrength) * Math.min(1, (gustTarget > gustStrength ? 6 : 2.5) * dt);
-
 		brightness += (Math.max(0, timbreBrightness(segment)) - brightness) * Math.min(1, 0.8 * dt);
 
 		const glowTarget = Math.max(0.22, momentum * 0.7 + energy * 0.25);
 		glow += (glowTarget - glow) * Math.min(1, (glowTarget > glow ? 4 : 0.5) * dt);
-
-		// the baseline only rises while a pulse is actively sustained (attack time constant ~6s, so a
-		// single flick barely moves it - it takes real repeated conducting), and always decays back to
-		// neutral on its own over ~45s regardless
-		const chaosBaselineTarget = Math.min(0.3, chaos * 0.5);
-		chaosBaseline +=
-			(chaosBaselineTarget - chaosBaseline) * Math.min(1, (chaosBaselineTarget > chaosBaseline ? 1 / 6 : 1 / 45) * dt);
-		const orderBaselineTarget = Math.min(0.3, order * 0.5);
-		orderBaseline +=
-			(orderBaselineTarget - orderBaseline) * Math.min(1, (orderBaselineTarget > orderBaseline ? 1 / 6 : 1 / 45) * dt);
 
 		// ---- looking forward ---------------------------------------------------------------------
 		// `sections` carries each part of the track with its own loudness, so the next loud one is
@@ -722,7 +474,6 @@ export function createConductor() {
 		runInBuild += (buildTarget - runInBuild) * Math.min(1, 4 * dt);
 
 		const { level, trend } = trendTracker(energy, dt);
-		wanderTime += dt;
 
 		// segments are sorted, so the next one after the playhead is a binary search away
 		const lookAhead = (seconds: number) => {
@@ -776,24 +527,8 @@ export function createConductor() {
 			sectionIntensity,
 			attackSharpness,
 			harmonicShift,
-			chaos,
-			order,
-			chaosTotal: Math.min(1, chaos + chaosBaseline),
-			orderTotal: Math.min(1, order + orderBaseline),
 			trend,
 			level,
-			wander: Math.sin(wanderTime * ((2 * Math.PI) / 120)),
-			gustAngle: Math.atan2(gustDirY, gustDirX),
-			gustCoherence: Math.min(1, Math.hypot(gustDirX, gustDirY)),
-			gustStrength,
-			baton,
-			hand,
-			trailAt,
-			rippleAt,
-			clicked,
-			rightClicked,
-			speedFader: 0.35 + scrollSmooth * 1.6,
-			yAttraction: 1 - (mouse.y / height) * 2,
 			brightness,
 			segment,
 			beatHit
@@ -821,16 +556,6 @@ export let lastConducted: Conductor | null = null;
 export let lastDiagnostics: { label: string; values: Record<string, number> } | null = null;
 export function publishDiagnostics(label: string, values: Record<string, number>): void {
 	lastDiagnostics = { label, values };
-}
-
-// A parameter-set index for A/B comparison, set by the preview harness (?variant=, key V). Neither
-// current preset reads it.
-let variant = 0;
-export function getVariant(): number {
-	return variant;
-}
-export function setVariant(v: number): void {
-	variant = v;
 }
 
 export type Hsl = { h: number; s: number; l: number };

@@ -1,5 +1,5 @@
 import { PRESETS, Preset } from "./src/presets";
-import { getVariant, lastConducted, lastDiagnostics, setVariant } from "./src/presets/flowfield-common";
+import { lastConducted, lastDiagnostics } from "./src/presets/flowfield-common";
 import { normaliseCurve } from "./src/audio-data";
 import { hexToRgb, setColours } from "./src/colours";
 
@@ -117,27 +117,6 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
-// the MouseState the real app passes to presets (cumulative click counters, a persistent 0..1
-// scroll fader). Neither current preset reads it
-const mouse = {
-	x: canvas.width / 2,
-	y: canvas.height / 2,
-	speed: 0,
-	clicks: 0,
-	rightClicks: 0,
-	down: false,
-	rightDown: false,
-	scroll: 0.5,
-	particleScale: 0.5
-};
-let prevMouseX = mouse.x;
-let prevMouseY = mouse.y;
-canvas.addEventListener("mousemove", e => {
-	const rect = canvas.getBoundingClientRect();
-	mouse.x = ((e.clientX - rect.left) / rect.width) * canvas.width;
-	mouse.y = ((e.clientY - rect.top) / rect.height) * canvas.height;
-});
-
 let presetIndex = 0;
 let preset: Preset = PRESETS[0].create();
 let usePaused = false;
@@ -149,7 +128,7 @@ function switchPreset(i: number) {
 	presetIndex = (i + PRESETS.length) % PRESETS.length;
 	preset = PRESETS[presetIndex].create();
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
-	label.textContent = `${presetIndex + 1}/${PRESETS.length}  ${PRESETS[presetIndex].name} (${PRESETS[presetIndex].id})  v${getVariant()}  paused=${usePaused}`;
+	label.textContent = `${presetIndex + 1}/${PRESETS.length}  ${PRESETS[presetIndex].name} (${PRESETS[presetIndex].id})  paused=${usePaused}`;
 }
 // what the conductor holds, from the console: the signals the B key records in the client. A
 // picture that looks wrong here is either a preset fault or a harness fault, and the way to tell
@@ -163,11 +142,6 @@ function switchPreset(i: number) {
 };
 // and what a simulation says about itself, for a preset whose state is not in its draw calls
 (window as any).diagnostics = () => lastDiagnostics;
-// a parameter set by index (?variant=, key V); neither current preset reads it
-(window as any).setVariant = (n: number) => {
-	setVariant(n);
-	switchPreset(presetIndex);
-};
 (window as any).switchPreset = switchPreset;
 (window as any).presetCount = PRESETS.length;
 (window as any).presetNames = PRESETS.map(p => `${p.id}:${p.name}`);
@@ -183,24 +157,12 @@ function switchPreset(i: number) {
 	fctx.drawImage(canvas, 0, 0);
 	await fetch("/save/" + name, { method: "POST", body: flat.toDataURL("image/png") });
 };
-(window as any).simulateMouseCircle = (radius: number, cx: number, cy: number, angle: number) => {
-	mouse.x = cx + Math.cos(angle) * radius;
-	mouse.y = cy + Math.sin(angle) * radius;
-};
 // drives the preset synchronously, bypassing requestAnimationFrame - needed because a backgrounded/
 // non-visible tab never fires rAF (or renders anything), which real screenshot capture depends on
 let manualElapsedMs = 0;
-(window as any).drawFramesSync = (count: number, dtMs = 16.7, mouseAngleStep = 0.05, mouseRadius = 300) => {
+(window as any).drawFramesSync = (count: number, dtMs = 16.7) => {
 	for (let f = 0; f < count; f++) {
 		manualElapsedMs += dtMs;
-		const angle = manualElapsedMs * 0.002 * mouseAngleStep * 50;
-		const nx = canvas.width / 2 + Math.cos(angle) * mouseRadius * (canvas.width / 800);
-		const ny = canvas.height / 2 + Math.sin(angle) * mouseRadius * (canvas.height / 450);
-		const speed = Math.hypot(nx - prevMouseX, ny - prevMouseY);
-		mouse.speed = mouse.speed * 0.8 + speed * 0.2;
-		prevMouseX = mouse.x = nx;
-		prevMouseY = mouse.y = ny;
-
 		const progressSec = trackStart + manualElapsedMs / 1000;
 		preset.draw({
 			ctx,
@@ -210,26 +172,24 @@ let manualElapsedMs = 0;
 			isPlaying: !usePaused,
 			audio,
 			colorRgb,
-			palette,
-			mouse
+			palette
 		} as any);
 	}
 };
 // ?preset=<id or index> so a single preset can be opened - or screenshotted headlessly - directly
-setVariant(Number(new URLSearchParams(location.search).get("variant") || 0));
 const wanted = new URLSearchParams(location.search).get("preset");
 const wantedIndex = wanted === null ? 0 : PRESETS.findIndex(p => p.id === wanted || p.name === wanted);
 switchPreset(wantedIndex < 0 ? Number(wanted) || 0 : wantedIndex);
 // ?warmup=N runs N frames synchronously before anything is shown. A headless screenshot cannot rely
 // on rAF having run a useful number of times, and anything with history to fill looks broken until
-// it has. Mouse held still.
+// it has.
 const warmup = Number(new URLSearchParams(location.search).get("warmup") || 0);
 if (warmup > 0) {
 	// ?fps= warms up over the SAME stretch of track at another frame rate (warmup counts 60 Hz
 	// frames), so a 144 Hz screen can be compared against the 60 Hz one the look was tuned on
 	const fps = Number(new URLSearchParams(location.search).get("fps") || 0);
-	if (fps > 0) (window as any).drawFramesSync(Math.round((warmup * fps) / 60), 1000 / fps, 0, 0);
-	else (window as any).drawFramesSync(warmup, 16.7, 0, 0);
+	if (fps > 0) (window as any).drawFramesSync(Math.round((warmup * fps) / 60), 1000 / fps);
+	else (window as any).drawFramesSync(warmup, 16.7);
 	// The rAF loop picks up where the warmup left off. The warmup runs on its own `manualElapsedMs`
 	// accumulator while `render()` computes the time from `start`, so without this the first real
 	// frame after a warmup would hand the conductor a progressSec fifteen seconds in the past. `dt`
@@ -248,10 +208,6 @@ if (warmup > 0) {
 window.addEventListener("keydown", e => {
 	if (e.key === "ArrowRight") switchPreset(presetIndex + 1);
 	if (e.key === "ArrowLeft") switchPreset(presetIndex - 1);
-	if (e.key === "v" || e.key === "V") {
-		setVariant((getVariant() + 1) % 3);
-		switchPreset(presetIndex);
-	}
 	if (e.key === " ") {
 		usePaused = !usePaused;
 		if (usePaused) pauseStart = performance.now();
@@ -261,11 +217,6 @@ window.addEventListener("keydown", e => {
 });
 
 function render() {
-	const speed = Math.hypot(mouse.x - prevMouseX, mouse.y - prevMouseY);
-	mouse.speed = mouse.speed * 0.8 + speed * 0.2;
-	prevMouseX = mouse.x;
-	prevMouseY = mouse.y;
-
 	const elapsed = usePaused ? pauseStart - start - pausedAccum : performance.now() - start - pausedAccum;
 	const progressSec = trackStart + elapsed / 1000;
 

@@ -1,26 +1,5 @@
 import { TrackAudioData, sampleCurve } from "../audio-data";
 
-// Mouse state is passed to presets, but neither current preset reads it.
-export type MouseState = {
-	x: number;
-	y: number;
-	// smoothed frame-to-frame movement speed in canvas px/frame - 0 when the mouse is still
-	speed: number;
-	// cumulative click count - watch for it increasing rather than reading a one-shot flag,
-	// so a click is never missed between frames
-	clicks: number;
-	// same idea, right mouse button
-	rightClicks: number;
-	// true while the button is held down
-	down: boolean;
-	rightDown: boolean;
-	// persistent 0..1 knob nudged by the scroll wheel, not a per-frame delta
-	scroll: number;
-	// persistent 0..1 knob nudged by alt+scroll wheel - how many particles to run with.
-	// 0.5 is the neutral/default count
-	particleScale: number;
-};
-
 export type PresetFrame = {
 	ctx: CanvasRenderingContext2D;
 	width: number;
@@ -33,7 +12,6 @@ export type PresetFrame = {
 	palette?: { r: number; g: number; b: number }[];
 	// all six colours Spotify extracts from the cover (the palette's three first)
 	coverColours?: { r: number; g: number; b: number }[];
-	mouse: MouseState;
 };
 
 export type Preset = {

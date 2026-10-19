@@ -254,46 +254,35 @@ for (const audio of [fakeAudio(7), null]) {
 		checking = true;
 
 		let progressSec = 3;
-		const frameAt = (t, isPlaying, mouseFrame) => ({
+		const frameAt = (t, isPlaying) => ({
 			ctx,
 			width: WIDTH,
 			height: HEIGHT,
 			progressSec: t,
 			isPlaying,
 			audio,
-			colorRgb: { r: 30.5, g: 215.2, b: 96.8 },
-			mouse: {
-				x: WIDTH * (0.5 + Math.sin(mouseFrame * 0.11) * 0.45),
-				y: HEIGHT * (0.5 + Math.cos(mouseFrame * 0.07) * 0.45),
-				speed: mouseFrame % 90 < 45 ? 0 : 5 + (mouseFrame % 45),
-				clicks: Math.floor(mouseFrame / 37),
-				rightClicks: Math.floor(mouseFrame / 53),
-				down: mouseFrame % 37 < 10,
-				rightDown: mouseFrame % 53 < 8,
-				scroll: 0.5 + Math.sin(mouseFrame * 0.05) * 0.5,
-				particleScale: 0.5 + Math.sin(mouseFrame * 0.03) * 0.5
-			}
+			colorRgb: { r: 30.5, g: 215.2, b: 96.8 }
 		});
 
 		try {
 			for (let f = 0; f < 400; f++) {
 				progressSec += 1 / 60;
-				preset.draw(frameAt(progressSec, true, f));
+				preset.draw(frameAt(progressSec, true));
 				checkDiagnostics(`${label} frame ${f}`);
 			}
 
 			// seeking backwards must not produce a negative dt anywhere
-			preset.draw(frameAt(progressSec - 40, true, 0));
-			preset.draw(frameAt(progressSec - 40 + 1 / 60, true, 1));
+			preset.draw(frameAt(progressSec - 40, true));
+			preset.draw(frameAt(progressSec - 40 + 1 / 60, true));
 
-			// paused, cursor held still: consecutive frames must be byte-identical, otherwise the
+			// paused: consecutive frames must be byte-identical, otherwise the
 			// preset keeps animating (or fading its own trails away) while the music is stopped
-			preset.draw(frameAt(progressSec, false, 12));
+			preset.draw(frameAt(progressSec, false));
 			log = [];
-			preset.draw(frameAt(progressSec, false, 12));
+			preset.draw(frameAt(progressSec, false));
 			const first = log.join("\n");
 			log = [];
-			preset.draw(frameAt(progressSec, false, 12));
+			preset.draw(frameAt(progressSec, false));
 			assert.strictEqual(log.join("\n"), first, `${label}: kept animating while paused`);
 
 			checking = false;
@@ -325,7 +314,7 @@ for (const audio of [fakeAudio(7), null]) {
 			label = `${definition.id}/knobs at ${end}`;
 			checking = true;
 			for (let f = 0; f < 200; f++) {
-				preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: { r: 30, g: 215, b: 96 }, mouse: { x: 0, y: 0, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 } });
+				preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: { r: 30, g: 215, b: 96 } });
 				checkDiagnostics(`${label} frame ${f}`);
 			}
 			checking = false;
@@ -351,7 +340,7 @@ for (const audio of [fakeAudio(7), null]) {
 				label = `${definition.id}/colours ${mode} ${follows}`;
 				checking = true;
 				for (let f = 0; f < 120; f++) {
-					preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: palette[1], palette, coverColours: [...palette, { r: 200, g: 40, b: 40 }, { r: 90, g: 90, b: 100 }, { r: 40, g: 180, b: 90 }], mouse: { x: 0, y: 0, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 } });
+					preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: palette[1], palette, coverColours: [...palette, { r: 200, g: 40, b: 40 }, { r: 90, g: 90, b: 100 }, { r: 40, g: 180, b: 90 }] });
 					checkDiagnostics(`${label} frame ${f}`);
 				}
 				checking = false;
@@ -387,8 +376,7 @@ for (const warning of warnings) console.log(`warn  ${warning}`);
 {
 	const { createConductor } = require(path.join(OUT, "presets", "flowfield-common.js"));
 	const conduct = createConductor();
-	const mouse = { x: 400, y: 300, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 };
-	const at = (audio, t) => conduct({ ctx: createContext(), width: WIDTH, height: HEIGHT, progressSec: t, isPlaying: true, audio, colorRgb: { r: 30, g: 215, b: 96 }, mouse });
+	const at = (audio, t) => conduct({ ctx: createContext(), width: WIDTH, height: HEIGHT, progressSec: t, isPlaying: true, audio, colorRgb: { r: 30, g: 215, b: 96 } });
 	const a = fakeAudio(7);
 	const b = fakeAudio(11);
 	let last = 0;
