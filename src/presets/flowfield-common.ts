@@ -1,13 +1,5 @@
 import { nearestBarStart, sampleCurve, sectionIndexAt, segmentAt, timeSinceLastBeat } from "../audio-data";
-import {
-	createEnergyTrend,
-	createRippleTracker,
-	rippleGlowAt,
-	rippleInfluence,
-	shimmerPhase,
-	shimmerTint,
-	timbreBrightness
-} from "./effects";
+import { createEnergyTrend, timbreBrightness } from "./effects";
 import { hitIndexAt } from "../rhythm";
 import { currentEnergy, PresetFrame } from "./types";
 
@@ -82,14 +74,6 @@ const IMPACT_FALL = 1.8;       // and falls away over this long after it
 // Shared plumbing for the whole Flow Field family - all 7 variants build on the helpers here so the
 // DJ-deck control surface behaves identically across every one and only the *look* (and each
 // preset's own field-generation math/blend style) differs between them.
-
-// shortest-path blend between two angles. Every gesture bends the field's own angle with this
-// instead of handing a particle a competing direction vector - a separate "vector to the cursor"
-// fighting for a share of the motion is what makes particles clot into a blob at the cursor.
-export function lerpAngle(a: number, b: number, t: number): number {
-	const diff = ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-	return a + diff * Math.max(0, Math.min(1, t));
-}
 
 export type Conductor = {
 	dt: number;
@@ -884,99 +868,6 @@ export function getVariant(): number {
 }
 export function setVariant(v: number): void {
 	variant = v;
-}
-
-// alt+scroll's particle-count knob, clamped to each preset's own safe ceiling - a one-liner, but
-// identical across every preset, so it lives here once instead of five times
-export function particleTargetCount(mouse: PresetFrame["mouse"], base: number, max: number): number {
-	return Math.min(max, Math.round(base * (0.4 + mouse.particleScale * 1.2)));
-}
-
-// bundles the click/ripple/shimmer machinery every preset needs identically - was getting
-// copy-pasted into each one nearly verbatim every time a new gesture landed. `begin()` once per
-// frame, then `bendTowardRipple`/`glowAt`/`tint` per particle.
-export function createGestureLayer() {
-	const ripple = createRippleTracker();
-	let shimmer = 0;
-	let rippleRadius = 1;
-
-	return {
-		begin(frame: PresetFrame, c: Conductor, fieldTime: number) {
-			const { mouse, width, height } = frame;
-			if (c.clicked) ripple.trigger(mouse.x, mouse.y, 1);
-			if (c.rightClicked) ripple.trigger(mouse.x, mouse.y, -1);
-			ripple.paint(mouse.x, mouse.y, mouse.down, 1);
-			ripple.paint(mouse.x, mouse.y, mouse.rightDown, -1);
-			ripple.update(c.dt);
-			shimmer = shimmerPhase(fieldTime);
-			rippleRadius = Math.hypot(width, height); // reaches the whole screen over its life
-		},
-		// bends `angle` towards the ripple's push/pull, same bounded-bend treatment as every other
-		// gesture - `strength` lets a preset with a very different character (Aurora's anisotropic
-		// sweep) use a much gentler fraction than the default so the ripple nudges it instead of
-		// overriding it outright
-		bendTowardRipple(angle: number, x: number, y: number, strength = 0.85, radius = rippleRadius) {
-			const rip = rippleInfluence(ripple.pos, ripple.neg, x, y, radius);
-			return {
-				angle: rip.weight > 0.01 ? lerpAngle(angle, rip.angle, rip.weight * strength) : angle,
-				weight: rip.weight
-			};
-		},
-		// how much extra brightness the cursor (while moving) and any active ripple lend to a
-		// particle at (x, y) right now - only ever lights up a particle that's actually there
-		glowAt(x: number, y: number, mouse: PresetFrame["mouse"], scale: number, gustStrength: number) {
-			const dist = Math.hypot(mouse.x - x, mouse.y - y);
-			return {
-				dist,
-				cursorGlow: Math.max(0, 1 - dist / (scale * 0.15)) * Math.min(1, gustStrength),
-				rippleGlow: rippleGlowAt(ripple.pos, ripple.neg, x, y, rippleRadius)
-			};
-		},
-		tint(base: { r: number; g: number; b: number }, pop: number) {
-			return shimmerTint(base, shimmer, pop);
-		}
-	};
-}
-
-// The per-frame layer everything is drawn into first. It is cleared every frame and is the ONLY
-// thing the bloom pass ever blurs - blurring the persistent trail canvas and compositing it back
-// onto itself is unbounded positive feedback and whites the screen out within seconds.
-export function createBloomLayer() {
-	let buffer: HTMLCanvasElement | null = null;
-
-	return {
-		begin(width: number, height: number): CanvasRenderingContext2D {
-			if (!buffer || buffer.width !== width || buffer.height !== height) {
-				buffer = document.createElement("canvas");
-				buffer.width = width;
-				buffer.height = height;
-			}
-			const bctx = buffer.getContext("2d")!;
-			bctx.clearRect(0, 0, width, height);
-			return bctx;
-		},
-		// composite this frame's strokes sharp, then add the cursor-X bloom send on top of them
-		flush(frame: PresetFrame, c: Conductor, blurScale = 0.01) {
-			const { ctx } = frame;
-			ctx.drawImage(buffer!, 0, 0);
-
-			// Audio only. This used to be `mouse.x / width`, so the amount of bloom over the whole
-			// screen was set by where the pointer happened to be resting: parked on the right it meant
-			// maximum bloom for an entire song, on every preset, with nothing musical behind it, and
-			// parked on the left it meant none at all. It is also the loudest brightness path in the
-			// renderer - it re-composites the entire frame - so whatever it was doing overrode the
-			// contrast every layer underneath it is carefully budgeted for. Gestures do not control
-			// brightness: CLAUDE.md, DESIGN-RULES §2, and SIGNALS.md's own entry for `glow`.
-			const amount = Math.min(1, c.glow * 0.55 + c.impact * 0.45);
-			if (amount <= 0.03) return;
-			ctx.save();
-			ctx.globalCompositeOperation = "lighter";
-			ctx.filter = `blur(${Math.max(2, c.scale * blurScale * amount)}px)`;
-			ctx.globalAlpha = Math.min(0.5, amount * 0.55);
-			ctx.drawImage(buffer!, 0, 0);
-			ctx.restore();
-		}
-	};
 }
 
 export type Hsl = { h: number; s: number; l: number };

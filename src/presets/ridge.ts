@@ -26,13 +26,13 @@
 // picture is redrawn every frame, so it may be glowed whole.
 import { createNoise2D } from "simplex-noise";
 import { createGlow, createKeyHue, keyHueAt } from "./effects";
-import { createConductor, hslToRgb } from "./flowfield-common";
+import { createConductor, hslToRgb } from "./flowfield-common";
 import { colours, palette, paletteAt } from "../colours";
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
 
-// ---- the seven extras, in the order of their keys ---------------------------------------------------------
+// ---- the extras, in the order of their keys ---------------------------------------------------------
 const FEATURES = {
 	horizon: { name: "horizon glow", on: true },
 	grid: { name: "bars and section gates", on: true },
@@ -243,8 +243,8 @@ function create(): Preset {
 	let pausedAt = "";
 	// how loud it has been lately, how loud the next stretch is, and how high the camera is: all eased
 	let lately = 0.3;
-	let ahead = 0.3;
-	// where on the palette the music has the picture, when the colour follows the sound
+	let ahead = 0.3;
+	// where on the palette the music has the picture, when the colour follows the sound
 	let soundAt = 0.5;
 	let camera = 1;
 	// the dust: across (half-widths), above the ground (ridges), its place in the passing stretch (0..1), its own light

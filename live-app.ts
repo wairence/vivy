@@ -2,7 +2,7 @@ import { createLiveAnalyser, LiveAnalyser } from "./src/live-audio";
 import { hslToRgb } from "./src/presets/flowfield-common";
 import { PRESETS, Preset } from "./src/presets";
 
-// The standalone window: the same eight presets, driven by whatever the computer is playing
+// The standalone window: the same presets, driven by whatever the computer is playing
 // instead of by Spotify's precomputed analysis. src/live-audio.ts does the actual work of turning
 // system audio into the TrackAudioData shape everything else already reads, so nothing in src/
 // changed to make this exist.
@@ -69,13 +69,6 @@ canvas.addEventListener("mousemove", e => {
 	prevY = mouse.y;
 });
 canvas.addEventListener("mousedown", e => {
-	// same dev toggle as the Spicetify app, same event, carrying the active preset's id so only the
-	// preset being looked at responds (Aurora records telemetry, Layers switches to its diagnostic
-	// palette). This window exists to debug with, so it needs it more than the real one does
-	if (e.ctrlKey) {
-		window.dispatchEvent(new CustomEvent("flowfield-dev-toggle", { detail: presetId }));
-		return;
-	}
 	if (e.button === 2) {
 		mouse.rightClicks++;
 		mouse.rightDown = true;

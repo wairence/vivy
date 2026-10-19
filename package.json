@@ -10,7 +10,6 @@
     "release": "node stamp.js --release && spicetify-creator --out=dist --minify && node release-notice.js && node stamp.js",
     "typecheck": "node stamp.js && tsc --noEmit",
     "check": "node check-presets.js",
-    "measure": "node measure-motion.js",
     "structure": "node structure-lab.js",
     "rhythm": "node rhythm-lab.js",
     "compression": "node compression-lab.js",

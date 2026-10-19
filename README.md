@@ -70,7 +70,7 @@ npm run build && spicetify apply     # dev build into your CustomApps
 npm run release                      # minified build in dist/
 ```
 
-`docs/ARCHITECTURE.md` is the place to start. `npm run preview` renders a preset in the browser without Spotify.
+`docs/ARCHITECTURE.md` is the place to start, and `docs/DATA.md` covers the analysis data and what is derived from it. `npm run preview` renders a preset in the browser without Spotify.
 
 ## Feedback
 
