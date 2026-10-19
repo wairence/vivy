@@ -342,9 +342,10 @@ for (const audio of [fakeAudio(7), null]) {
 	const palette = [{ r: 12, g: 20, b: 60 }, { r: 128, g: 128, b: 128 }, { r: 250, g: 240, b: 200 }];
 	for (const definition of PRESETS) {
 		let n = 0;
+		const own = colours.coloursOf(definition.id);
 		for (const mode of ["cover", "custom"])
-			for (const follows of ["height", "depth", "sound"]) {
-				colours.setColours({ mode, follows, stops: ["#000000", "#ff2a6d", "#ffffff"], harmony: 0.5 });
+			for (const [follows] of own ? own.gradients : [["none"]]) {
+				colours.setColours(definition.id, { mode, follows, stops: ["#000000", "#ff2a6d", "#ffffff"], harmony: 0.5 });
 				const preset = definition.create();
 				const ctx = createContext();
 				label = `${definition.id}/colours ${mode} ${follows}`;
@@ -358,7 +359,10 @@ for (const audio of [fakeAudio(7), null]) {
 			}
 		console.log(`ok  ${definition.id} colours (${n} combinations)`);
 	}
-	colours.setColours({ mode: "cover", follows: "height", stops: ["#1e3a8a", "#5de6f0"], harmony: 1 });
+	for (const definition of PRESETS) {
+		const own = colours.coloursOf(definition.id);
+		if (own) colours.setColours(definition.id, { mode: "cover", follows: own.gradients[0][0], stops: ["#1e3a8a", "#5de6f0"], harmony: 1 });
+	}
 }
 
 for (const warning of warnings) console.log(`warn  ${warning}`);

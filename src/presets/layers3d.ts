@@ -20,7 +20,7 @@
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
 import { createConductor, Hsl, hslToRgb, publishDiagnostics } from "./flowfield-common";
-import { colours, palette, paletteAt } from "../colours";
+import { colourSettings, palette, paletteAt } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition } from "./types";
 import { tune } from "./tune";
@@ -257,6 +257,8 @@ type Mark = Particle & {
 	charge: number;
 	power: number;
 	streak: number;
+	// where it sits on the palette when the colours follow the sounds: how ringing its sound was
+	tone: number;
 	// where it is in the picture: across and up in half-heights of the screen
 	vx: number;
 	vy: number;
@@ -264,6 +266,14 @@ type Mark = Particle & {
 
 // one layer's ribbons: the last TRAIL places of every particle, in world space, as a ring
 type Trail = { points: Float32Array; head: number; clock: number; step: number };
+
+// what the gradient can follow here (see colours.ts and the colour block in draw)
+const COLOURS = colourSettings("layers3d", [
+	["layers", "Layers", "The haze, the hairlines and the marks take one colour each, first to last"],
+	["depth", "Depth", "Far away takes the first colour, up close the last"],
+	["sounds", "Sounds", "Each mark by its sound: dull sounds the first colour, ringing ones the last"],
+	["music", "Music", "Everything slides along the colours with how loud the music is"]
+]);
 
 const smoothstep = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const shortest = (d: number) => ((d + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -300,24 +310,30 @@ attribute vec2 a_pos;
 attribute vec2 a_uv;
 attribute float a_alpha;
 attribute float a_hot;
+attribute float a_tone;
 uniform vec2 u_res;
+uniform vec3 u_color;
+uniform vec3 u_near;
 varying vec2 v_uv;
 varying float v_alpha;
 varying float v_hot;
+varying vec3 v_color;
 void main() {
 	v_uv = a_uv;
 	v_alpha = a_alpha;
 	v_hot = a_hot;
+	v_color = mix(u_color, u_near, a_tone);
 	gl_Position = vec4(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0, 0.0, 1.0);
 }`;
 // a crack burns white-hot and tight, a voice glows soft and wide
 const HEAD_FS = `
 precision mediump float;
-uniform vec3 u_color;
 varying vec2 v_uv;
 varying float v_alpha;
 varying float v_hot;
+varying vec3 v_color;
 void main() {
+	vec3 u_color = v_color;
 	float r = length(v_uv);
 	float glow = pow(max(0.0, 1.0 - r), 2.2);
 	float core = exp(-r * r * 60.0);
@@ -329,7 +345,7 @@ type Renderer = {
 	canvas: HTMLCanvasElement;
 	// a GPU reset, a driver update, sleep: the context goes, and everything made in it with it
 	lost: () => boolean;
-	draw: (width: number, height: number, layers: { verts: Float32Array; count: number; rgb: Rgb; near: Rgb }[], heads: Float32Array, headCount: number, headRgb: Rgb) => void;
+	draw: (width: number, height: number, layers: { verts: Float32Array; count: number; rgb: Rgb; near: Rgb }[], heads: Float32Array, headCount: number, headRgb: Rgb, headNear: Rgb) => void;
 };
 
 // null wherever there is no WebGL - the headless check harness, or a client with it switched off. The
@@ -398,7 +414,7 @@ function createRenderer(maxParticles: number): Renderer | null {
 	return {
 		canvas,
 		lost: () => gl.isContextLost(),
-		draw(width, height, layers, heads, headCount, headRgb) {
+		draw(width, height, layers, heads, headCount, headRgb, headNear) {
 			if (canvas.width !== width || canvas.height !== height) {
 				canvas.width = width;
 				canvas.height = height;
@@ -429,12 +445,14 @@ function createRenderer(maxParticles: number): Renderer | null {
 				gl.useProgram(head);
 				gl.uniform2f(gl.getUniformLocation(head, "u_res"), width, height);
 				gl.uniform3f(gl.getUniformLocation(head, "u_color"), headRgb.r / 255, headRgb.g / 255, headRgb.b / 255);
+				gl.uniform3f(gl.getUniformLocation(head, "u_near"), headNear.r / 255, headNear.g / 255, headNear.b / 255);
 				gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, headIbo);
 				gl.bufferData(gl.ARRAY_BUFFER, heads, gl.DYNAMIC_DRAW);
-				attr(head, "a_pos", 2, 6, 0);
-				attr(head, "a_uv", 2, 6, 2);
-				attr(head, "a_alpha", 1, 6, 4);
-				attr(head, "a_hot", 1, 6, 5);
+				attr(head, "a_pos", 2, 7, 0);
+				attr(head, "a_uv", 2, 7, 2);
+				attr(head, "a_alpha", 1, 7, 4);
+				attr(head, "a_hot", 1, 7, 5);
+				attr(head, "a_tone", 1, 7, 6);
 				gl.drawElements(gl.TRIANGLES, headCount * 6, gl.UNSIGNED_SHORT, 0);
 			}
 		}
@@ -498,6 +516,7 @@ function create(): Preset {
 		charge: 0,
 		power: 0.5,
 		streak: 0,
+		tone: 0.5,
 		vx: 0,
 		vy: 0
 	});
@@ -526,7 +545,7 @@ function create(): Preset {
 	const groundVerts = new Float32Array(GROUND_COUNT * TRAIL * 2 * 5);
 	const sheetVerts = new Float32Array(SHEET_COUNT * TRAIL * 2 * 5);
 	const markVerts = new Float32Array(MARK_POOL * TRAIL * 2 * 5);
-	const headVerts = new Float32Array(MARK_POOL * 4 * 6);
+	const headVerts = new Float32Array(MARK_POOL * 4 * 7);
 
 	const glow = createGlow();
 
@@ -679,25 +698,33 @@ function create(): Preset {
 			// The three layers take three points along the palette (the cover's, or the picked colours):
 			// the haze its first colour, the hairlines the middle, the marks the last. With the colour
 			// following the sound, the whole family slides along it with the music.
-			const pal = palette(frame.palette ?? [colorRgb]);
-			soundAt += (Math.min(1, Math.max(0, c.energy)) - soundAt) * Math.min(1, c.dt / 0.8);
-			// Following depth, every stroke runs from the first colour where the fog begins to the last at
-			// the lens, each layer keeping its own lightness; otherwise near and far are the same colour.
-			const along = (t: number) => paletteAt(pal, colours.follows === "sound" ? t * 0.5 + soundAt * 0.5 : t);
-			const byDepth = colours.follows === "depth";
+			const pal = palette(COLOURS, frame.palette ?? [colorRgb]);
+			// What the gradient follows (see COLOURS above). Each layer keeps its own lightness and the colour
+			// only says where on the palette it is:
+			//   layers   the haze the first colour, the hairlines the middle, the marks the last
+			//   depth    every stroke from the first colour where the fog begins to the last at the lens
+			//   sounds   the marks by their sound, dull the first colour and ringing the last, over the haze
+			//            and hairlines in the first and middle
+			//   music    the whole family slides along the palette with how loud the music is
+			// The music is read against the band levels live in (5th to 95th percentile over eight tracks,
+			// the same as Ridgeline's camera), not against 0..1, where it barely moved.
+			soundAt += (smoothstep((c.energy - 0.154) / (0.49 - 0.154)) - soundAt) * Math.min(1, c.dt / 0.8);
+			const byDepth = COLOURS.follows === "depth";
+			const bySound = COLOURS.follows === "sounds";
+			const along = (t: number) => paletteAt(pal, COLOURS.follows === "music" ? t * 0.3 + soundAt * 0.7 : t);
 			// the cover's palette is spread a little round the wheel between the layers; picked colours stay as picked
-			const turn = colours.mode === "cover" ? 1 : 0;
-			const key = keyHue(audio, progressSec, c.dt) * colours.harmony;
+			const turn = COLOURS.mode === "cover" ? 1 : 0;
+			const key = keyHue(audio, progressSec, c.dt) * COLOURS.harmony;
 			const shimmer = shimmerPhase(fieldTime);
 			const groundOf = (g: Hsl) => shimmerTint(hslToRgb(g.h + key, g.s * 0.7, g.l * 0.62), shimmer, tintPulse * 0.4);
 			const sheetOf = (sh: Hsl) => shimmerTint(hslToRgb(sh.h + key + 0.06 * turn, sh.s, sh.l), shimmer, tintPulse);
 			const markOf = (m: Hsl) => shimmerTint(hslToRgb(m.h + key + 0.14 * turn, Math.min(1, m.s + 0.08), Math.min(0.78, m.l + 0.14)), shimmer, tintPulse);
-			const groundRgb = groundOf(along(byDepth ? 0 : 0));
+			const groundRgb = groundOf(along(0));
 			const sheetRgb = sheetOf(along(byDepth ? 0 : 0.5));
-			const markRgb = markOf(along(byDepth ? 0 : 1));
+			const markRgb = markOf(along(byDepth || bySound ? 0 : 1));
 			const groundNear = byDepth ? groundOf(along(1)) : groundRgb;
 			const sheetNear = byDepth ? sheetOf(along(1)) : sheetRgb;
-			const markNear = byDepth ? markOf(along(1)) : markRgb;
+			const markNear = byDepth || bySound ? markOf(along(1)) : markRgb;
 
 
 			// ---- the wake: what the marks cutting through the field do to a stroke at (x, y, z) -----------------
@@ -739,7 +766,7 @@ function create(): Preset {
 			// ahead, narrowing as a circle does - so the thick end is round. (It was cut square: hidden
 			// under a mark's star when the star was big, and plain to see when it was not.)
 			const maxHalf = height * K.MAX_HALF_WIDTH;
-			const ribbon = (verts: Float32Array, t: Trail, i: number, alpha: number, halfWidth: number) => {
+			const ribbon = (verts: Float32Array, t: Trail, i: number, alpha: number, halfWidth: number, tone = -1) => {
 				const back = 1 - t.clock / t.step;
 				let o = i * TRAIL * 10;
 				for (let j = 0; j < TAIL; j++) {
@@ -770,7 +797,7 @@ function create(): Preset {
 					hws[k] = Math.max(0.6, w);
 					als[k] = alpha * seen * (1 - age) * Math.min(1, w / 0.6);
 					// how near it is, for a gradient that follows depth: 1 at the lens, 0 where the fog begins
-					tns[k] = 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark));
+					tns[k] = tone >= 0 ? tone : 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark));
 				}
 				// the nose, along the way it is going on screen (a ribbon standing still has none)
 				let nx0 = sxs[2] - sxs[3];
@@ -1018,6 +1045,7 @@ function create(): Preset {
 				m.power = Math.min(1, sound.amp) * (0.7 + Math.random() * 0.45);
 				m.breadth = sound.breadth * (0.8 + Math.random() * 0.4);
 				m.soft = 1 - sound.sharp;
+				m.tone = sound.ringing;
 				// a crack travels, a swell drifts; a few run, and the faster of a sound's marks are the nearer
 				const runner = Math.random() < 0.1;
 				const r = Math.random();
@@ -1108,7 +1136,7 @@ function create(): Preset {
 
 				m.alpha = Math.min(K.MARK_ALPHA_CAP, Math.max(0, m.charge * (0.8 + m.power * 1.3) * sectionPower * (0.62 + m.brightness * 0.55)));
 				// one channel each: length is the pace, brightness the loudness, width the breadth
-				ribbon(markVerts, markTrail, i, m.alpha, K.MARK_WIDTH * (0.5 + m.breadth + m.soft * 0.75 + m.charge * 0.6) * markWidthBand);
+				ribbon(markVerts, markTrail, i, m.alpha, K.MARK_WIDTH * (0.5 + m.breadth + m.soft * 0.75 + m.charge * 0.6) * markWidthBand, bySound ? m.tone : -1);
 				if (m.charge > flareNow) flareNow = m.charge;
 
 				// its head: a star, as bright as its sound and as big as its hit
@@ -1119,7 +1147,8 @@ function create(): Preset {
 					const hot = Math.max(0, Math.min(1, 0.35 + m.breadth * 0.9 - m.soft * 0.6));
 					const size = Math.min(height * K.MAX_STAR, (((0.026 + m.power * 0.05) * (0.55 + m.charge * 0.45) * (1.5 - hot * 0.5)) / depth) * focal);
 					const light = Math.min(1, m.charge * (0.35 + m.power * 0.65) * sectionPower) * seen;
-					let o = headCount++ * 24;
+					let o = headCount++ * 28;
+					const tone = bySound ? m.tone : byDepth ? 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark)) : 0;
 					for (let k = 0; k < 4; k++) {
 						const u = k % 2 === 0 ? -1 : 1;
 						const w = k < 2 ? -1 : 1;
@@ -1129,6 +1158,7 @@ function create(): Preset {
 						headVerts[o++] = w;
 						headVerts[o++] = light;
 						headVerts[o++] = hot;
+						headVerts[o++] = tone;
 					}
 					checksum += sx + sy + size;
 				}
@@ -1163,6 +1193,7 @@ function create(): Preset {
 				],
 				headVerts,
 				headCount,
+				markRgb,
 				markNear
 			);
 

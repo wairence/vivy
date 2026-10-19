@@ -1,6 +1,7 @@
 import { PRESETS, Preset } from "./src/presets";
 import { getVariant, lastConducted, lastDiagnostics, setVariant } from "./src/presets/flowfield-common";
 import { normaliseCurve } from "./src/audio-data";
+import { hexToRgb, setColours } from "./src/colours";
 
 function fakeAudio() {
 	let state = 7;
@@ -92,6 +93,10 @@ const audio = params.get("audio") ? loadAudio(params.get("audio")!) : fakeAudio(
 const warmupFrames = Number(params.get("warmup") || 0);
 const trackStart = params.get("at") ? Math.max(0, Number(params.get("at")) - warmupFrames / 60) : 3;
 const colorRgb = { r: 30, g: 195, b: 140 };
+// a cover's three colours, dark to light (?palette=hex,hex,hex): what the client gets from the art
+const palette = (params.get("palette") || "1b2a4a,c8406e,f2c38b").split(",").map(h => hexToRgb("#" + h));
+// colours set from the console or a driver: setColours("layers3d", { follows: "depth" })
+(window as any).setColours = setColours;
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const label = document.getElementById("label") as HTMLDivElement;
@@ -213,6 +218,7 @@ let manualElapsedMs = 0;
 			isPlaying: !usePaused,
 			audio,
 			colorRgb,
+			palette,
 			mouse
 		} as any);
 	}
@@ -284,6 +290,7 @@ function render() {
 		isPlaying: !usePaused,
 		audio,
 		colorRgb,
+		palette,
 		mouse
 	} as any);
 

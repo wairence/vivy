@@ -27,7 +27,7 @@
 import { createNoise2D } from "simplex-noise";
 import { createGlow, createKeyHue, keyHueAt } from "./effects";
 import { createConductor, hslToRgb } from "./flowfield-common";
-import { colours, palette, paletteAt } from "../colours";
+import { colourSettings, palette, paletteAt } from "../colours";
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
@@ -192,6 +192,13 @@ const K = tune("ridge", {
 	["FUTURE_BEATS", "HORIZON", "RIDGE", "HALF_WIDTH", "SMOOTH", "ECHO_BEATS", "SKY_BRIGHT", "GLOW"]
 );
 
+
+// what the gradient can follow here (see colours.ts)
+const COLOURS = colourSettings("ridge", [
+	["height", "Height", "Valleys take the first colour, peaks the last: the louder a moment, the further along"],
+	["depth", "Depth", "Far away, what is coming, takes the first colour; now, up close, the last"],
+	["sound", "Sound", "The whole landscape slides along the colours with how loud the music is"]
+]);
 
 const smoothstep = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const BLACK = { r: 0, g: 0, b: 0 };
@@ -488,16 +495,16 @@ function create(): Preset {
 			// loudness, its depth, or the music's loudness right now (see colours.ts). Loudness is read
 			// against the band levels actually live in, measured over eight tracks (the camera's), not
 			// against 0..1, where most of the palette would never be reached.
-			const pal = palette(frame.palette ?? [colorRgb]);
+			const pal = palette(COLOURS, frame.palette ?? [colorRgb]);
 			const rel = (level: number) => smoothstep((level - K.LATELY_QUIET) / (K.LATELY_LOUD - K.LATELY_QUIET));
 			// its own envelope, slower than the line's: the colour follows the passage, not every hit
 			soundAt += (rel(c.energy) - soundAt) * Math.min(1, c.dt / 0.8);
 			const tint = (loud: number, near: number) =>
-				paletteAt(pal, colours.follows === "height" ? loud : colours.follows === "depth" ? near : soundAt);
+				paletteAt(pal, COLOURS.follows === "height" ? loud : COLOURS.follows === "depth" ? near : soundAt);
 			// the cover's palette is turned a little off for the line and the section rows, so they stand
 			// out of the rows' own colour; picked colours are drawn as picked
-			const turn = colours.mode === "cover" ? 0.14 : 0;
-			const liveHue = keyHue(shown, viewTime, c.dt) * colours.harmony;
+			const turn = COLOURS.mode === "cover" ? 0.14 : 0;
+			const liveHue = keyHue(shown, viewTime, c.dt) * COLOURS.harmony;
 			const lit = tint(rel(live[LEVEL]), 1);
 			const liveRgb = hslToRgb(lit.h + liveHue + turn, Math.min(1, lit.s + 0.08), Math.min(0.8, lit.l + 0.16));
 
@@ -518,7 +525,7 @@ function create(): Preset {
 				const strength = smoothstep((ahead - 0.1) / 0.45) * presence;
 				if (strength > 0.01) {
 					const far = tint(rel(ahead), 0);
-					const hue = far.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * colours.harmony : liveHue);
+					const hue = far.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * COLOURS.harmony : liveHue);
 					const sky = hslToRgb(hue + turn * 0.3, far.s * 0.85, Math.min(0.7, far.l + 0.05));
 					// A low wide band, not a disc: one gradient stretched far more across than up, so it lies along
 					// the horizon. Round, it read as a spot hanging in the sky. Above the far edge it rises SKY_HEIGHT,
@@ -709,7 +716,7 @@ function create(): Preset {
 							gates.set(gate, data);
 						}
 						const sure = 0.35 + Math.min(1, sections[gate].confidence) * 0.65;
-						row(data, z, playedAt(z) * sunkAt(tau) * farAt(z), farAt(z) * playedAt(z) * 0.85 * sure, Math.max(1.2, (scale * 0.003 * K.Z_NOW) / z), data[HUE] * colours.harmony + turn, 1, 0);
+						row(data, z, playedAt(z) * sunkAt(tau) * farAt(z), farAt(z) * playedAt(z) * 0.85 * sure, Math.max(1.2, (scale * 0.003 * K.Z_NOW) / z), data[HUE] * COLOURS.harmony + turn, 1, 0);
 					}
 					gate--;
 				}
@@ -759,7 +766,7 @@ function create(): Preset {
 					playedAt(z) * sunkAt(tau) * farAt(z),
 					seen * (0.07 + level * 0.42 + weight * 0.3 + crossing * 0.3 + (bar ? 0.2 : 0)),
 					Math.max(1, (scale * (bar ? 0.0028 : 0.0012 + weight * 0.0012) * K.Z_NOW) / z),
-					FEATURES.grid.on ? data[HUE] * colours.harmony : liveHue,
+					FEATURES.grid.on ? data[HUE] * COLOURS.harmony : liveHue,
 					level,
 					near * (0.06 + c.energy * 0.22)
 				);

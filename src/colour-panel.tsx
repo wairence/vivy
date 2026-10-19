@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ColourMode, colours, Follows, hexToRgb, rgbToHex, setColours } from "./colours";
+import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "./colours";
 
 // THE COLOURS, at the top of the knobs panel: the cover's palette or picked colours, and what the
 // gradient follows. A picked colour opens a picker beside the panel (where the panel's scrolling
@@ -73,8 +73,27 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 	const square = useDrag((x, y) => set({ ...hsv, s: x, v: 1 - y }));
 	const strip = useDrag(x => set({ ...hsv, h: Math.min(0.999, x) }));
 	const pure = hsvToHex({ h: hsv.h, s: 1, v: 1 });
+	// every change is on screen at once, so there is nothing to confirm: a click anywhere else, or Esc,
+	// puts the picker away (a click on its own swatch is the swatch's, which toggles it)
+	const box = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const doc = box.current?.ownerDocument;
+		if (!doc) return;
+		const away = (e: MouseEvent) => {
+			const t = e.target as Element | null;
+			if (box.current?.contains(t) || t?.closest?.(".vivy-swatch")) return;
+			onClose();
+		};
+		const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+		doc.addEventListener("mousedown", away, true);
+		doc.addEventListener("keydown", esc, true);
+		return () => {
+			doc.removeEventListener("mousedown", away, true);
+			doc.removeEventListener("keydown", esc, true);
+		};
+	}, [onClose]);
 	return (
-		<div className="vivy-picker" style={{ top, right }} onMouseDown={e => e.stopPropagation()}>
+		<div className="vivy-picker" ref={box} style={{ top, right }} onMouseDown={e => e.stopPropagation()}>
 			<div className="vivy-picker-square" style={{ backgroundColor: pure }} onPointerDown={square}>
 				<div className="vivy-picker-dot" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%`, background: hsvToHex(hsv) }} />
 			</div>
@@ -98,7 +117,6 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 					}}
 				/>
 				{onRemove ? <button onClick={onRemove}>Remove</button> : null}
-				<button onClick={onClose}>Done</button>
 			</div>
 		</div>
 	);
@@ -108,17 +126,13 @@ const MODES: [ColourMode, string][] = [
 	["cover", "Cover"],
 	["custom", "Custom"]
 ];
-const FOLLOWS: [Follows, string, string][] = [
-	["height", "Height", "Ridgeline: valleys take the first colour, peaks the last. Drift: the haze, the hairlines and the marks take one colour each"],
-	["depth", "Depth", "Far away takes the first colour, up close the last. In Ridgeline far away is what is coming"],
-	["sound", "Sound", "The whole picture slides along the colours with how loud the music is"]
-];
 
-export function ColourSection({ panel }: { panel: React.RefObject<HTMLDivElement | null> }) {
+export function ColourSection({ presetId, panel }: { presetId: string; panel: React.RefObject<HTMLDivElement | null> }) {
 	const [, redraw] = useState(0);
 	const [editing, setEditing] = useState<{ i: number; top: number; right: number } | null>(null);
 	const refresh = () => redraw(n => n + 1);
-	const set = (patch: Parameters<typeof setColours>[0]) => (setColours(patch), refresh());
+	const set = (patch: Partial<Colours>) => (setColours(presetId, patch), refresh());
+	const own = coloursOf(presetId);
 	// the picker belongs to the panel: it goes when the panel scrolls it out of reach
 	useEffect(() => {
 		const p = panel.current;
@@ -135,6 +149,8 @@ export function ColourSection({ panel }: { panel: React.RefObject<HTMLDivElement
 		const box = parent.getBoundingClientRect();
 		setEditing({ i, top: el.getBoundingClientRect().top - box.top - 8, right: box.right - p.getBoundingClientRect().left + 10 });
 	};
+	if (!own) return null;
+	const colours = own.colours;
 	const custom = colours.mode === "custom";
 	const stops = colours.stops;
 	return (
@@ -177,7 +193,7 @@ export function ColourSection({ panel }: { panel: React.RefObject<HTMLDivElement
 			) : null}
 			<div className="vivy-tune-sub">gradient follows</div>
 			<div className="vivy-seg">
-				{FOLLOWS.map(([f, name, what]) => (
+				{own.gradients.map(([f, name, what]) => (
 					<button key={f} className={colours.follows === f ? "on" : ""} title={what} onClick={() => set({ follows: f })}>
 						{name}
 					</button>

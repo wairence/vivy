@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./css/app.css";
 import { loadTrackAudioData, loadTrackAudioFeatures, nearestBarStart, trackDataFromFeatures, TrackAudioData } from "./audio-data";
 import { lastConducted } from "./presets/flowfield-common";
@@ -145,6 +145,25 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 	// where the panel's scrolling would cut it off
 	const [hint, setHint] = useState<{ knob: Knob; top: number; right: number } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
+	// THE SCROLLBAR is our own, a hairline beside the content: Spotify styles every scrollbar in the
+	// client, and its fat white bar wins over anything set on the panel's
+	const [bar, setBar] = useState<{ top: number; height: number; right: number } | null>(null);
+	const measureBar = () => {
+		const p = panelRef.current;
+		const parent = p?.offsetParent;
+		if (!p || !parent || p.scrollHeight <= p.clientHeight + 1) return setBar(b => (b ? null : b));
+		const box = parent.getBoundingClientRect();
+		const r = p.getBoundingClientRect();
+		const height = Math.max(24, (p.clientHeight / p.scrollHeight) * (r.height - 16));
+		const top = r.top - box.top + 8 + (p.scrollTop / (p.scrollHeight - p.clientHeight)) * (r.height - 16 - height);
+		const right = box.right - r.right + 3;
+		setBar(b => (b && Math.abs(b.top - top) < 0.5 && Math.abs(b.height - height) < 0.5 && b.right === right ? b : { top, height, right }));
+	};
+	useLayoutEffect(measureBar);
+	useEffect(() => {
+		window.addEventListener("resize", measureBar);
+		return () => window.removeEventListener("resize", measureBar);
+	}, []);
 	// the few settings most people want, and the rest behind "More"; which one is open is remembered
 	const [more, setMore] = useState(() => {
 		try {
@@ -218,14 +237,14 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 	};
 	return (
 		<>
-		<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => setHint(null)}>
+		<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => (setHint(null), measureBar())}>
 			<div className="vivy-tune-head">
 				<b>Knobs</b>
 				<IconButton small label="Copy moved values" icon={ICON_COPY} onClick={copy} />
 				<IconButton small label="Reset all to defaults" icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
 				<IconButton small label="Close (T)" icon={ICON_CLOSE} onClick={onClose} />
 			</div>
-			<ColourSection panel={panelRef} />
+			<ColourSection key={presetId} presetId={presetId} panel={panelRef} />
 			{!t || (t.knobs.length === 0 && t.features.length === 0) ? (
 				<div className="vivy-tune-none">This preset has no knobs yet.</div>
 			) : null}
@@ -251,6 +270,7 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 				</>
 			) : null}
 		</div>
+		{bar ? <div className="vivy-tune-bar" style={{ top: bar.top, height: bar.height, right: bar.right }} /> : null}
 		{hint ? (
 			<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
 				<div>{hint.knob.hint}</div>

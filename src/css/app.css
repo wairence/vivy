@@ -316,23 +316,24 @@
 }
 
 /* the panel's own scrollbar: thin, and only as visible as it needs to be */
-/* Only the -webkit- pseudo-elements: in Chromium, setting scrollbar-width or scrollbar-color
-   switches those off, and "thin" is still the platform's own fat bar */
+/* the panel's own scrollbar is hidden (Spotify's styling of it wins over ours); a hairline drawn beside
+   it, .vivy-tune-bar, shows where you are */
+.vivy-tune {
+	scrollbar-width: none !important;
+}
+
 .vivy-tune::-webkit-scrollbar {
-	width: 3px;
+	display: none !important;
+	width: 0 !important;
 }
 
-.vivy-tune::-webkit-scrollbar-track {
-	background: transparent;
-}
-
-.vivy-tune::-webkit-scrollbar-thumb {
-	border-radius: 2px;
-	background: rgba(255, 255, 255, 0.1);
-}
-
-.vivy-tune::-webkit-scrollbar-thumb:hover {
-	background: var(--vivy-accent-edge);
+.vivy-tune-bar {
+	position: absolute;
+	z-index: 4;
+	width: 2px;
+	border-radius: 1px;
+	background: rgba(255, 255, 255, 0.16);
+	pointer-events: none;
 }
 
 /* what the knob under the pointer does, beside the panel */
