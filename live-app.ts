@@ -2,7 +2,7 @@ import { createLiveAnalyser, LiveAnalyser } from "./src/live-audio";
 import { hslToRgb } from "./src/presets/flowfield-common";
 import { PRESETS, Preset } from "./src/presets";
 
-// The standalone window: the same eight presets, driven by whatever the computer is playing
+// The standalone window: the same presets, driven by whatever the computer is playing
 // instead of by Spotify's precomputed analysis. src/live-audio.ts does the actual work of turning
 // system audio into the TrackAudioData shape everything else already reads, so nothing in src/
 // changed to make this exist.

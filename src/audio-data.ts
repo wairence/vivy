@@ -33,7 +33,7 @@ export type TrackAudioData = {
 	// the track's big moments and what the music does on the way into each - see track-structure.ts
 	moments: Moment[];
 	// the sub-beat grid, roughly two to four per beat. Carried but not yet used by anything - see
-	// docs/MEASUREMENTS.md
+	// docs/DATA.md
 	tatums: Bar[];
 	// the audio's own onsets, from `rhythmstring` - see rhythm.ts. Empty when the track has no
 	// rhythmstring (8 of 89 dumps) or the platform cannot inflate it, and `strike` falls back to

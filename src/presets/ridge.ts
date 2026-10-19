@@ -31,7 +31,7 @@ import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
 
-// ---- the seven extras, in the order of their keys ---------------------------------------------------------
+// ---- the extras, in the order of their keys ---------------------------------------------------------
 const FEATURES = {
 	horizon: { name: "horizon glow", on: true },
 	grid: { name: "bars and section gates", on: true },
