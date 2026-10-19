@@ -195,24 +195,6 @@ export function timeSinceLastBeat(beats: SpotifyAudioAnalysis["beats"], t: numbe
 	return t - beats[lo].start;
 }
 
-// the last entry starting at or before `t`, or null. Same binary search as segmentAt/beats, over
-// anything with a `start` - bars and sections both need it
-function spanAt<T extends { start: number; duration: number }>(spans: T[], t: number): T | null {
-	let lo = 0;
-	let hi = spans.length - 1;
-	if (hi < 0 || spans[0].start > t) return null;
-	while (lo < hi) {
-		const mid = Math.ceil((lo + hi) / 2);
-		if (spans[mid].start <= t) lo = mid;
-		else hi = mid - 1;
-	}
-	return spans[lo];
-}
-
-export function barAt(bars: Bar[], t: number): Bar | null {
-	return spanAt(bars, t);
-}
-
 // How far `t` is from the nearest bar BOUNDARY, and how sure the tracker was about that bar.
 // Nearest, not "the bar containing t": the beat grid and the bar grid are estimated separately and
 // a beat that starts a bar can land a few milliseconds on either side of it. Asking only about the

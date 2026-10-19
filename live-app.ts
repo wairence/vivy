@@ -69,13 +69,6 @@ canvas.addEventListener("mousemove", e => {
 	prevY = mouse.y;
 });
 canvas.addEventListener("mousedown", e => {
-	// same dev toggle as the Spicetify app, same event, carrying the active preset's id so only the
-	// preset being looked at responds (Aurora records telemetry, Layers switches to its diagnostic
-	// palette). This window exists to debug with, so it needs it more than the real one does
-	if (e.ctrlKey) {
-		window.dispatchEvent(new CustomEvent("flowfield-dev-toggle", { detail: presetId }));
-		return;
-	}
 	if (e.button === 2) {
 		mouse.rightClicks++;
 		mouse.rightDown = true;
