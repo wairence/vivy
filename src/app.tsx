@@ -300,8 +300,9 @@ export default function App() {
 	// audio/visual data is only read from the rAF loop, doesn't need to trigger a re-render
 	const audioDataRef = useRef<TrackAudioData | null>(null);
 	// the cover's palette, dark to light: what the new cover gives, and what is on screen on its way there
-	const targetColorRef = useRef([DEFAULT_RGB, DEFAULT_RGB, DEFAULT_RGB]);
-	const displayColorRef = useRef([DEFAULT_RGB, DEFAULT_RGB, DEFAULT_RGB]);
+	// (dark, vibrant, light, then the cover's other three: prominent, desaturated, vibrant-non-alarming)
+	const targetColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
+	const displayColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
 	const mousePosRef = useRef({ x: 0, y: 0 });
 	const mouseClicksRef = useRef(0);
 	const mouseRightClicksRef = useRef(0);
@@ -511,7 +512,7 @@ export default function App() {
 				Spicetify.extractColorPreset(item.metadata.image_url)
 					.then(colors => {
 						const rgb = colors[0]?.colorLight?.rgb;
-						if (rgb && stillHere()) targetColorRef.current = [rgb, rgb, rgb];
+						if (rgb && stillHere()) targetColorRef.current = Array.from({ length: 6 }, () => rgb);
 					})
 					.catch(() => {
 						// keep the last colours
@@ -519,7 +520,7 @@ export default function App() {
 			};
 			Spicetify.colorExtractor(item.uri)
 				.then(c => {
-					const stops = [c.DARK_VIBRANT, c.VIBRANT, c.LIGHT_VIBRANT];
+					const stops = [c.DARK_VIBRANT, c.VIBRANT, c.LIGHT_VIBRANT, c.PROMINENT, c.DESATURATED, c.VIBRANT_NON_ALARMING];
 					if (!stops.every(hex => /^#[0-9a-f]{6}$/i.test(hex ?? ""))) return single();
 					if (stillHere()) targetColorRef.current = stops.map(hexToRgb);
 				})
@@ -733,7 +734,8 @@ export default function App() {
 				isPlaying,
 				audio: audioDataRef.current,
 				colorRgb: displayColorRef.current[1],
-				palette: displayColorRef.current,
+				palette: displayColorRef.current.slice(0, 3),
+				coverColours: displayColorRef.current,
 				mouse: {
 					x: mousePos.x,
 					y: mousePos.y,

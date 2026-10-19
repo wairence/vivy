@@ -351,7 +351,7 @@ for (const audio of [fakeAudio(7), null]) {
 				label = `${definition.id}/colours ${mode} ${follows}`;
 				checking = true;
 				for (let f = 0; f < 120; f++) {
-					preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: palette[1], palette, mouse: { x: 0, y: 0, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 } });
+					preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: palette[1], palette, coverColours: [...palette, { r: 200, g: 40, b: 40 }, { r: 90, g: 90, b: 100 }, { r: 40, g: 180, b: 90 }], mouse: { x: 0, y: 0, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 } });
 					checkDiagnostics(`${label} frame ${f}`);
 				}
 				checking = false;

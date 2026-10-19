@@ -32,6 +32,8 @@ export type PresetFrame = {
 	colorRgb: { r: number; g: number; b: number };
 	// the cover's palette, dark to light (colorRgb is its middle); absent in the test harnesses
 	palette?: { r: number; g: number; b: number }[];
+	// all six colours Spotify extracts from the cover (the palette's three first)
+	coverColours?: { r: number; g: number; b: number }[];
 	mouse: MouseState;
 };
 

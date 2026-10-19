@@ -20,7 +20,7 @@
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
 import { createConductor, Hsl, hslToRgb, publishDiagnostics } from "./flowfield-common";
-import { colourSettings, palette, paletteAt } from "../colours";
+import { colourSettings, distinctCover, palette, paletteAt } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition } from "./types";
 import { tune } from "./tune";
@@ -698,7 +698,7 @@ function create(): Preset {
 			// The three layers take three points along the palette (the cover's, or the picked colours):
 			// the haze its first colour, the hairlines the middle, the marks the last. With the colour
 			// following the sound, the whole family slides along it with the music.
-			const pal = palette(COLOURS, frame.palette ?? [colorRgb]);
+			const pal = frame.coverColours ? distinctCover(COLOURS, frame.coverColours) : palette(COLOURS, frame.palette ?? [colorRgb]);
 			// What the gradient follows (see COLOURS above). Each layer keeps its own lightness and the colour
 			// only says where on the palette it is:
 			//   layers   the haze the first colour, the hairlines the middle, the marks the last

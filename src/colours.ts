@@ -92,6 +92,40 @@ export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 	});
 }
 
+// THE COVER'S MOST DIFFERENT COLOURS, for a preset whose light adds up on black (Drift): there a
+// difference in lightness hardly reads - a brighter stroke just looks nearer - and the dark, vibrant
+// and light colour of one cover are often one hue. Of the six Spotify extracts, the most coloured one
+// and then the ones furthest from it round the wheel, ordered dark to light. A cover of one hue has
+// no second colour to give, and stays one.
+export function distinctCover(colours: Colours, cover: Rgb[]): Hsl[] {
+	if (colours.mode === "custom" || cover.length < 4) return palette(colours, cover.slice(0, 3));
+	const all = cover.map(rgbToHsl);
+	const hueGap = (a: Hsl, b: Hsl) => {
+		const d = Math.abs(a.h - b.h) % 1;
+		return Math.min(d, 1 - d);
+	};
+	const picked = [all.reduce((best, c) => (c.s > best.s ? c : best))];
+	while (picked.length < 3) {
+		let next = all[0];
+		let score = -1;
+		for (const c of all) {
+			if (picked.includes(c)) continue;
+			// far from every one already taken, and coloured enough to show it
+			const v = Math.min(...picked.map(p => hueGap(p, c))) * Math.min(1, c.s * 2);
+			if (v > score) {
+				score = v;
+				next = c;
+			}
+		}
+		picked.push(next);
+	}
+	picked.sort((a, b) => a.l - b.l);
+	return picked.map((c, i) => {
+		const [lo, hi] = COVER_BANDS[i];
+		return { h: c.h, s: Math.max(0.45, Math.min(0.95, c.s)), l: Math.max(lo, Math.min(hi, c.l)) };
+	});
+}
+
 // a point along the palette, 0 = the first colour, 1 = the last; hue the short way round
 export function paletteAt(p: Hsl[], t: number): Hsl {
 	if (p.length === 1) return { ...p[0] };
