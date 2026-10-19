@@ -23,7 +23,7 @@ import { createConductor, Hsl, hslToRgb, publishDiagnostics } from "./flowfield-
 import { colourSettings, distinctCover, palette, paletteAt } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition } from "./types";
-import { tune } from "./tune";
+import { tune, tuneVersion } from "./tune";
 
 // ---- the scene, in world units -----------------------------------------------------------------------
 // the cloud's radius, and how far inside its surface a stroke starts to fade before it is recycled
@@ -561,6 +561,7 @@ function create(): Preset {
 	let cursor = 0;
 	let flash = 0;
 	const keyHue = createKeyHue();
+	let pausedAt = "";
 	// where on the palette the music has the picture, when the colour follows the sound
 	let soundAt = 0.5;
 	// where the camera is on its orbit
@@ -571,7 +572,15 @@ function create(): Preset {
 	return {
 		draw(frame) {
 			const { ctx, width, height, isPlaying, colorRgb, audio, progressSec } = frame;
-			if (!isPlaying) return;
+			// PAUSED: one frame, then nothing until something it shows changes - the moment (a seek), the
+			// size, a knob or a colour. Time stands still with the track (every step here is the track's own
+			// dt), so that frame is the same scene, only drawn again. It was nothing at all: a colour picked
+			// while paused showed only on play, and a switch to Drift while paused was a black screen
+			if (!isPlaying) {
+				const still = [progressSec, width, height, tuneVersion()].join("|");
+				if (still === pausedAt) return;
+				pausedAt = still;
+			} else pausedAt = "";
 			// the lens and the fog, read once a frame: per point they were a sixth of the whole frame's work
 			nearDark = K.NEAR_DARK;
 			nearK = 1 / (K.NEAR_CLEAR - K.NEAR_DARK);
