@@ -5,7 +5,7 @@ import { lastConducted } from "./presets/flowfield-common";
 import { AudioSync, createSmoothClock } from "./audio-sync";
 import { BUILD, DEV } from "./build-stamp";
 import { Preset, PresetFrame, PRESETS } from "./presets";
-import { movedText, resetKnobs, setKnob, tuningOf } from "./presets/tune";
+import { Knob, movedText, resetKnobs, setKnob, tuningOf } from "./presets/tune";
 
 // posts a diagnostic to the dev server (npm run live) so findings inside the Spotify client are
 // readable from outside it; silently ignored when nothing is listening, which is every normal run
@@ -125,6 +125,10 @@ function IconButton({ label, icon, active, onClick }: { label: string; icon: Rea
 // back into the code as the new defaults.
 function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => void }) {
 	const [, redraw] = useState(0);
+	// the hint of the knob under the pointer (or in focus), drawn beside the panel rather than in it,
+	// where the panel's scrolling would cut it off
+	const [hint, setHint] = useState<{ knob: Knob; top: number; right: number } | null>(null);
+	const panelRef = useRef<HTMLDivElement>(null);
 	const t = tuningOf(presetId);
 	const refresh = () => redraw(n => n + 1);
 	// a feature flipped with its number key shows here too (the preset's own listener runs first)
@@ -137,9 +141,17 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 		navigator.clipboard?.writeText(text || "nothing moved").catch(() => {});
 		Spicetify.showNotification(text ? "Moved knobs copied" : "Nothing moved yet");
 	};
+	const showHint = (knob: Knob, row: HTMLElement) => {
+		const panel = panelRef.current;
+		const parent = panel?.offsetParent;
+		if (!knob.hint || !panel || !parent) return;
+		const p = parent.getBoundingClientRect();
+		setHint({ knob, top: row.getBoundingClientRect().top - p.top, right: p.right - panel.getBoundingClientRect().left + 10 });
+	};
 	let group = "";
 	return (
-		<div className="vivy-tune" onMouseDown={e => e.stopPropagation()}>
+		<>
+		<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => setHint(null)}>
 			<div className="vivy-tune-head">
 				<b>Knobs</b>
 				<button onClick={copy}>Copy</button>
@@ -161,8 +173,14 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 				return (
 					<React.Fragment key={k.key}>
 						{head}
-						<div className={`vivy-tune-knob${value !== k.def ? " moved" : ""}`}>
-							<div className="vivy-tune-label" title={`${k.key} (default ${k.def}). Double-click resets`} onDoubleClick={() => (setKnob(presetId, k.key, k.def), refresh())}>
+						<div
+							className={`vivy-tune-knob${value !== k.def ? " moved" : ""}`}
+							onMouseEnter={e => showHint(k, e.currentTarget)}
+							onMouseLeave={() => setHint(null)}
+							onFocus={e => showHint(k, e.currentTarget)}
+							onBlur={() => setHint(null)}
+						>
+							<div className="vivy-tune-label" onDoubleClick={() => (setKnob(presetId, k.key, k.def), refresh())}>
 								<span>{k.label}</span>
 								<span>{+value.toPrecision(3)}</span>
 							</div>
@@ -179,6 +197,15 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 				);
 			})}
 		</div>
+		{hint ? (
+			<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
+				<div>{hint.knob.hint}</div>
+				<small>
+					default {+hint.knob.def.toPrecision(3)} · double-click the name to reset
+				</small>
+			</div>
+		) : null}
+		</>
 	);
 }
 

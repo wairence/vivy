@@ -151,7 +151,38 @@ const K = tune("ridge", {
 	SKY_HEIGHT: [SKY_HEIGHT, 0.03, 0.6, "glow height", "horizon glow"],
 	SKY_WIDTH: [SKY_WIDTH, 0.2, 1.5, "glow width"],
 	SKY_BRIGHT: [SKY_BRIGHT, 0, 1, "glow brightness"]
-});
+	},
+	// what each one does, shown beside the panel on hover
+	{
+		FUTURE_BEATS: "How much of the song ahead is on screen. Higher shows further into the future, rows get packed tighter.",
+		PAST_BEATS: "How much of the song just played stays visible in front of the bright line before it sinks away. Higher keeps it longer.",
+		ROW_GAP_MIN: "Smallest spacing between rows. Higher drops rows on fast sounds, so the terrain gets sparser; lower keeps every sound as its own row.",
+		ROW_GAP_MAX: "Longest stretch without a row. Lower fills quiet gaps with flat filler rows, so the terrain looks denser; higher leaves holes.",
+		Z_NOW: "How far back the bright line stands. Higher moves it away from the front edge, smaller and lower, with more room for the past to sink.",
+		HORIZON: "Where the far edge of the terrain sits. Higher moves the horizon up the screen and squeezes the terrain into less space.",
+		GROUND: "How far the front of the ground drops below the horizon. Higher spreads the rows out vertically; lower flattens them together.",
+		RIDGE: "How tall the mountains are. Higher makes loud sounds tower; lower makes the whole landscape flatter.",
+		HALF_WIDTH: "How wide the terrain is. Higher spreads the mountains out wider; lower packs them toward the middle.",
+		SIDE: "How far the flat ground continues to the left and right of the mountains before fading out. Higher gives longer flat lines at the edges.",
+		FINE_UNTIL: "Distance up to which rows are drawn in full detail. Higher keeps more rows smooth; lower makes far rows slightly coarser.",
+		CAMERA_LOW: "How high the view floats over quiet music. Higher looks down on the terrain more; lower sits near the ground and flattens the rows.",
+		CAMERA_HIGH: "How high the view floats over loud music. Higher lifts it further up and opens the rows apart as the song gets louder.",
+		LATELY_QUIET: "How loud the last few seconds must be before the view starts to rise. Higher keeps the view low for longer.",
+		LATELY_LOUD: "How loud the last few seconds must be for the view to reach its top. Higher means only the loudest parts lift it all the way.",
+		LEAD_FULL: "How big a coming build must be to make the view crouch fully before it. Lower makes it crouch for small builds too.",
+		LANE_SPAN: "How wide apart the notes are spread across a row. Higher spreads the mountains across the width; lower bunches them in the middle.",
+		HILL: "How wide each note's hill is. Higher makes broad, rolling mountains that merge; lower makes thin, separate spikes.",
+		RIDGE_LIMIT: "Height at which tall peaks start to flatten off. Lower rounds off loud peaks sooner; higher lets them shoot up sharper.",
+		JAG: "How rough a sharp sound makes its ridge. Higher gives jagged, noisy edges on hits; zero keeps every ridge smooth.",
+		SMOOTH: "How much each row's line is blurred along its length. Higher gives soft, rounded hills; zero shows every little spike.",
+		ECHO_BEATS: "How long the afterimage of each sound lingers. Higher leaves it hanging for longer before it fades out.",
+		ECHO_SWELL_SOFT: "How far the afterimage of a quiet sound lifts off the line as it fades. Higher makes even soft sounds throw an echo.",
+		ECHO_SWELL_HARD: "How far the afterimage of a big hit lifts off the line as it fades. Higher makes hits throw a taller, wider echo.",
+		SKY_HEIGHT: "How high the glow on the horizon reaches. Higher makes a taller band of light above the far edge.",
+		SKY_WIDTH: "How far the horizon glow spreads sideways. Higher makes it stretch across the whole screen and beyond.",
+		SKY_BRIGHT: "How bright the horizon glow is at its centre. Zero turns it off."
+	}
+);
 
 
 const smoothstep = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));

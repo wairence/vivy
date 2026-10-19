@@ -278,9 +278,93 @@
 	accent-color: var(--vivy-accent);
 }
 
+/* a thin rail with a round handle instead of the browser's thick default */
 .vivy-tune-knob input {
 	width: 100%;
+	height: 14px;
 	margin: 2px 0 0;
+	appearance: none;
+	background: transparent;
+	cursor: pointer;
+}
+
+.vivy-tune-knob input::-webkit-slider-runnable-track {
+	height: 3px;
+	border-radius: 2px;
+	background: rgba(255, 255, 255, 0.16);
+}
+
+.vivy-tune-knob input::-webkit-slider-thumb {
+	appearance: none;
+	width: 12px;
+	height: 12px;
+	margin-top: -4.5px;
+	border-radius: 50%;
+	background: var(--vivy-accent);
+	transition: transform 0.12s;
+}
+
+.vivy-tune-knob input:hover::-webkit-slider-thumb,
+.vivy-tune-knob input:focus-visible::-webkit-slider-thumb {
+	transform: scale(1.25);
+}
+
+.vivy-tune-knob.moved input::-webkit-slider-thumb {
+	background: #ffd479;
+}
+
+/* the panel's own scrollbar: thin, and only as visible as it needs to be */
+.vivy-tune {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.vivy-tune::-webkit-scrollbar {
+	width: 6px;
+}
+
+.vivy-tune::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.vivy-tune::-webkit-scrollbar-thumb {
+	border-radius: 3px;
+	background: rgba(255, 255, 255, 0.18);
+}
+
+.vivy-tune::-webkit-scrollbar-thumb:hover {
+	background: var(--vivy-accent-edge);
+}
+
+/* what the knob under the pointer does, beside the panel */
+.vivy-tune-hint {
+	position: absolute;
+	z-index: 4;
+	width: 240px;
+	padding: 9px 12px;
+	font-size: 12px;
+	line-height: 1.45;
+	color: rgba(255, 255, 255, 0.9);
+	background: rgba(14, 16, 18, 0.92);
+	border: 1px solid var(--vivy-accent-edge);
+	border-radius: 10px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	pointer-events: none;
+	animation: vivy-hint-in 0.14s ease-out;
+}
+
+.vivy-tune-hint small {
+	display: block;
+	margin-top: 5px;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes vivy-hint-in {
+	from {
+		opacity: 0;
+		transform: translateX(4px);
+	}
 }
 
 .vivy-tune-none {

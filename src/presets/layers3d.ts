@@ -161,7 +161,50 @@ const K = tune("layers3d", {
 	SHEET_WIDTH: [SHEET_WIDTH, 0.0005, 0.02, "sheet ribbon width"],
 	MARK_WIDTH: [MARK_WIDTH, 0.0005, 0.02, "mark ribbon width"],
 	MAX_HALF_WIDTH: [MAX_HALF_WIDTH, 0.001, 0.03, "no ribbon wider than"]
-});
+	},
+	// what each one does, shown beside the panel on hover
+	{
+		ORBIT_RADIUS: "How far the viewpoint is from the middle of the cloud as it circles. Higher pulls out and shows more of the cloud; lower goes deep inside.",
+		ORBIT_SWAY: "How far the viewpoint drifts up and down while it circles. Higher gives a bigger, slower rise and fall.",
+		LOOK_WANDER: "How much the view drifts away from the centre of the cloud. Zero stares dead at the middle; higher wanders around it.",
+		FOCAL: "Lens zoom. Higher zooms in and narrows the view, making everything bigger; lower gives a wide-angle view.",
+		ORBIT_REST: "How fast the view turns around the cloud when the music is quiet. Zero stops it; higher keeps it moving in silence.",
+		ORBIT_LOUD: "How much louder music speeds up the turning. Higher makes loud parts spin the view noticeably faster.",
+		NEAR_DARK: "Distance from the viewpoint inside which strokes are invisible. Higher hides more of what is close up.",
+		NEAR_CLEAR: "Distance at which strokes reach full brightness. Higher makes near strokes fade in more gradually, lower makes them show up sooner.",
+		FOG_START: "Distance where strokes start to dim into the distance. Higher keeps far strokes bright for longer.",
+		FOG_END: "Distance where strokes have faded out completely. Higher lets you see further into the cloud; lower hides the far side.",
+		CLOUD: "Size of the cloud of strokes. Higher fills a bigger space with the same strokes, so it looks sparser; lower packs it tighter.",
+		CLOUD_EDGE: "How softly strokes fade out as they reach the edge of the cloud. Higher gives a gentler edge; lower a sharper one.",
+		GROUND_TRAIL: "Length of the wide, dim ribbons that follow the loudness of the last ten seconds. Higher makes them longer.",
+		SHEET_TRAIL: "Length of the thin hairlines that follow the loudness right now. Higher makes them longer streaks.",
+		MARK_TRAIL: "Length of the tail behind each bright mark. Higher makes longer comet tails.",
+		FLOW_MAX: "How far the swirling flow can push strokes off their main direction. Higher gives more curling and tangled motion; lower is straighter.",
+		MARK_SPREAD_MAX: "How far the bright marks are swirled off the main direction. Zero sends them straight; higher makes them curve more.",
+		GROUND_INERTIA: "How slowly the wide ribbons change direction. Higher makes them turn in long, lazy curves; lower makes them twitchy.",
+		SHEET_INERTIA: "How slowly the thin hairlines change direction. Higher makes them turn in long, lazy curves; lower makes them twitchy.",
+		MARK_INERTIA: "How slowly the bright marks change direction. Higher makes them turn in long, lazy curves; lower makes them twitchy.",
+		CUT_RADIUS: "How far around a bright mark the surrounding strokes are disturbed. Higher stirs a bigger patch of the cloud.",
+		WAKE_TURN: "How strongly a passing mark bends the strokes near it into its direction. Zero leaves them alone.",
+		WAKE_RATE: "How quickly the nearby strokes swing round after a mark. Higher makes them snap over; lower makes them follow slowly.",
+		WAKE_HURRY: "How much a passing mark speeds up the strokes near it. Zero keeps them at the same pace.",
+		MARK_BASE_SPEED: "How fast the bright marks travel. Higher makes them dash across; zero makes them hang in place.",
+		FLING: "How hard a hit throws its mark. Higher sends marks of loud, sharp sounds flying much faster.",
+		FLING_RANK: "How hard each mark in a rapid run of sounds is thrown. Higher makes runs of notes shoot out faster.",
+		MARK_NEAR: "How close to the viewer a mark may appear. Lower lets marks come up big and close; higher keeps them away.",
+		MARK_FAR: "How far from the viewer a mark may appear. Higher lets marks appear small and far off; lower keeps them all close.",
+		FLY_IN_NEARER: "Marks closer than this fly in from off screen instead of appearing in place. Zero makes all fly in, one makes all appear in place.",
+		FLY_IN_MARGIN: "How far past the screen edge a flying-in mark begins. Higher makes it travel further before coming into view.",
+		GROUND_ALPHA_CAP: "Brightest the wide, dim ribbons can get. Higher makes the background haze stronger; zero hides it.",
+		SHEET_ALPHA_CAP: "Brightest the thin hairlines can get. Higher makes them stand out; zero hides them.",
+		MARK_ALPHA_CAP: "Brightest the marks can get. Lower dims even the loudest hits; zero hides the marks.",
+		MAX_STAR: "Largest size of the glowing spot at the head of a mark. Higher lets loud hits flare big; zero removes the spots.",
+		GROUND_WIDTH: "Thickness of the wide, dim ribbons. Higher makes them fatter.",
+		SHEET_WIDTH: "Thickness of the thin hairlines. Higher makes them heavier lines.",
+		MARK_WIDTH: "Thickness of the tail behind each mark. Higher makes it thicker.",
+		MAX_HALF_WIDTH: "Widest any ribbon may look on screen, however close. Lower stops close strokes turning into broad bands."
+	}
+);
 
 
 type Rgb = { r: number; g: number; b: number };
