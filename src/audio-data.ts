@@ -33,7 +33,7 @@ export type TrackAudioData = {
 	// the track's big moments and what the music does on the way into each - see track-structure.ts
 	moments: Moment[];
 	// the sub-beat grid, roughly two to four per beat. Carried but not yet used by anything - see
-	// docs/MEASUREMENTS.md
+	// docs/DATA.md
 	tatums: Bar[];
 	// the audio's own onsets, from `rhythmstring` - see rhythm.ts. Empty when the track has no
 	// rhythmstring (8 of 89 dumps) or the platform cannot inflate it, and `strike` falls back to
@@ -193,24 +193,6 @@ export function timeSinceLastBeat(beats: SpotifyAudioAnalysis["beats"], t: numbe
 	}
 
 	return t - beats[lo].start;
-}
-
-// the last entry starting at or before `t`, or null. Same binary search as segmentAt/beats, over
-// anything with a `start` - bars and sections both need it
-function spanAt<T extends { start: number; duration: number }>(spans: T[], t: number): T | null {
-	let lo = 0;
-	let hi = spans.length - 1;
-	if (hi < 0 || spans[0].start > t) return null;
-	while (lo < hi) {
-		const mid = Math.ceil((lo + hi) / 2);
-		if (spans[mid].start <= t) lo = mid;
-		else hi = mid - 1;
-	}
-	return spans[lo];
-}
-
-export function barAt(bars: Bar[], t: number): Bar | null {
-	return spanAt(bars, t);
 }
 
 // How far `t` is from the nearest bar BOUNDARY, and how sure the tracker was about that bar.

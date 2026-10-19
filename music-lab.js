@@ -8,7 +8,7 @@
 //   node music-lab.js "<dump name>"              the music
 //   node music-lab.js "<dump name>" --picture    the music, and what the preset does beside it
 //   node music-lab.js "<dump name>" --audio-json the track as a preset sees it, for preview-harness ?audio=
-//   node music-lab.js "<dump name>" --picture --preset=flowfield --variant=2   ...another preset, another V
+//   node music-lab.js "<dump name>" --picture --preset=layers3d   ...another preset
 //
 // --picture needs the compiled preset: run `npm run check` once first.
 const fs = require("fs");
@@ -262,7 +262,7 @@ let pixelLight = 0;
 	const W = 2560;
 	const H = 1440;
 	const FPS = 30;
-	const id = (process.argv.find(a => a.startsWith("--preset=")) || "--preset=layers2").slice(9);
+	const id = (process.argv.find(a => a.startsWith("--preset=")) || "--preset=ridge").slice(9);
 	const definition = PRESETS.find(p2 => p2.id === id);
 	if (!definition) {
 		console.error("no such preset: " + id + " (have: " + PRESETS.map(p2 => p2.id).join(", ") + ")");
