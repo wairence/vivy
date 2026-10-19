@@ -92,34 +92,63 @@ export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 	});
 }
 
-// THE COVER'S MOST DIFFERENT COLOURS, for a preset whose light adds up on black (Drift): there a
+// THE COVER'S OWN COLOURS, BY AREA, for a preset whose light adds up on black (Drift): there a
 // difference in lightness hardly reads - a brighter stroke just looks nearer - and the dark, vibrant
-// and light colour of one cover are often one hue. Of the six Spotify extracts, the most coloured one
-// and then the ones furthest from it round the wheel, ordered dark to light. A cover of one hue has
-// no second colour to give, and stays one.
-export function distinctCover(colours: Colours, cover: Rgb[]): Hsl[] {
-	if (colours.mode === "custom" || cover.length < 4) return palette(colours, cover.slice(0, 3));
-	const all = cover.map(rgbToHsl);
-	const hueGap = (a: Hsl, b: Hsl) => {
-		const d = Math.abs(a.h - b.h) % 1;
-		return Math.min(d, 1 - d);
-	};
-	const picked = [all.reduce((best, c) => (c.s > best.s ? c : best))];
-	while (picked.length < 3) {
-		let next = all[0];
-		let score = -1;
-		for (const c of all) {
-			if (picked.includes(c)) continue;
-			// far from every one already taken, and coloured enough to show it
-			const v = Math.min(...picked.map(p => hueGap(p, c))) * Math.min(1, c.s * 2);
-			if (v > score) {
-				score = v;
-				next = c;
-			}
-		}
-		picked.push(next);
+// and light colour Spotify extracts are often three shades of one hue. So the cover itself is looked
+// at: its coloured pixels, grouped by hue, and every group that covers a real part of the coloured
+// area is a colour of the palette, dark to light. A speck of another colour (a red badge on a blue
+// cover, 4% of it) is not a colour of that cover: blended into the gradient it turned blue to purple
+// to red, which the cover is not. A cover with one such group, or none, gives [] - it is of one colour,
+// and the extracted shades of it are used.
+const SHARE = 0.1;
+export function coverHues(px: Uint8ClampedArray): Rgb[] {
+	const BINS = 36;
+	const count = new Float64Array(BINS);
+	const sum = new Float64Array(BINS * 3);
+	let coloured = 0;
+	for (let i = 0; i + 3 < px.length; i += 4) {
+		const c = rgbToHsl({ r: px[i], g: px[i + 1], b: px[i + 2] });
+		if (c.s < 0.35 || c.l < 0.15 || c.l > 0.85) continue;
+		const k = Math.floor(c.h * BINS) % BINS;
+		coloured++;
+		count[k]++;
+		sum[k * 3] += px[i];
+		sum[k * 3 + 1] += px[i + 1];
+		sum[k * 3 + 2] += px[i + 2];
 	}
-	picked.sort((a, b) => a.l - b.l);
+	const used = new Uint8Array(BINS);
+	const found: Rgb[] = [];
+	while (found.length < 3 && coloured > 0) {
+		let peak = -1;
+		for (let k = 0; k < BINS; k++) if (!used[k] && (peak < 0 || count[k] > count[peak])) peak = k;
+		if (peak < 0) break;
+		// a group is its peak and a bin to each side (30 degrees of hue); two more to each side are kept
+		// out of the next group, so one hue does not come back as two
+		let n = 0;
+		let r = 0;
+		let g = 0;
+		let b = 0;
+		for (let d = -2; d <= 2; d++) {
+			const k = (peak + d + BINS) % BINS;
+			if (Math.abs(d) <= 1 && !used[k]) {
+				n += count[k];
+				r += sum[k * 3];
+				g += sum[k * 3 + 1];
+				b += sum[k * 3 + 2];
+			}
+			used[k] = 1;
+		}
+		if (n / coloured < SHARE) break;
+		found.push({ r: r / n, g: g / n, b: b / n });
+	}
+	return found.length >= 2 ? found : [];
+}
+
+// Drift's palette: the cover's own colours by area when it has two or more, otherwise its shades
+// (slots 3..5 of the cover colours hold the former, or a copy of the latter)
+export function distinctCover(colours: Colours, cover: Rgb[]): Hsl[] {
+	if (colours.mode === "custom" || cover.length < 6) return palette(colours, cover.slice(0, 3));
+	const picked = cover.slice(3, 6).map(rgbToHsl).sort((a, b) => a.l - b.l);
 	return picked.map((c, i) => {
 		const [lo, hi] = COVER_BANDS[i];
 		return { h: c.h, s: Math.max(0.45, Math.min(0.95, c.s)), l: Math.max(lo, Math.min(hi, c.l)) };

@@ -365,6 +365,22 @@ for (const audio of [fakeAudio(7), null]) {
 	}
 }
 
+// The cover's colours by area: a speck of red on a blue cover is not a second colour, two big areas are
+{
+	const { coverHues } = require(path.join(OUT, "colours.js"));
+	const cover = parts => {
+		const px = new Uint8ClampedArray(48 * 48 * 4);
+		let i = 0;
+		for (const [share, rgb] of parts)
+			for (let n = Math.round(share * 48 * 48); n > 0 && i < px.length; n--, i += 4) px.set([...rgb, 255], i);
+		return px;
+	};
+	assert.strictEqual(coverHues(cover([[0.25, [45, 179, 235]], [0.012, [172, 0, 22]], [0.7, [20, 20, 24]]])).length, 0, "a red speck on a blue cover made a palette");
+	assert.strictEqual(coverHues(cover([[0.4, [45, 179, 235]], [0.3, [235, 140, 40]], [0.3, [10, 10, 10]]])).length, 2, "blue and orange halves were not two colours");
+	assert.strictEqual(coverHues(cover([[1, [128, 128, 128]]])).length, 0, "a grey cover made a palette");
+	console.log("ok  cover colours by area (a speck is not a colour, two halves are two)");
+}
+
 for (const warning of warnings) console.log(`warn  ${warning}`);
 // Between tracks: the analysis goes away, the clock goes back to zero, and a different song arrives at a
 // different level. The conductor's level may not climb while it waits and may not step when it joins.

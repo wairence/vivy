@@ -122,12 +122,17 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 	);
 }
 
-const MODES: [ColourMode, string][] = [
-	["cover", "Cover"],
-	["custom", "Custom"]
+const MODES: [ColourMode, string, string][] = [
+	["cover", "Cover", "The colours come from the album cover and change with every track"],
+	["custom", "Custom", "Your own two or three colours, the same for every track"]
 ];
 
-export function ColourSection({ presetId, panel }: { presetId: string; panel: React.RefObject<HTMLDivElement | null> }) {
+export function ColourSection({ presetId, panel, explain, unexplain }: {
+	presetId: string;
+	panel: React.RefObject<HTMLDivElement | null>;
+	explain: (text: string, row: HTMLElement) => void;
+	unexplain: () => void;
+}) {
 	const [, redraw] = useState(0);
 	const [editing, setEditing] = useState<{ i: number; top: number; right: number } | null>(null);
 	const refresh = () => redraw(n => n + 1);
@@ -157,8 +162,13 @@ export function ColourSection({ presetId, panel }: { presetId: string; panel: Re
 		<>
 			<div className="vivy-tune-group">colour</div>
 			<div className="vivy-seg">
-				{MODES.map(([m, name]) => (
-					<button key={m} className={colours.mode === m ? "on" : ""} onClick={() => (setEditing(null), set({ mode: m }))}>
+				{MODES.map(([m, name, what]) => (
+					<button
+						key={m}
+						className={colours.mode === m ? "on" : ""}
+						onMouseEnter={e => explain(what, e.currentTarget)}
+						onMouseLeave={unexplain}
+						onClick={() => (setEditing(null), set({ mode: m }))}>
 						{name}
 					</button>
 				))}
@@ -194,12 +204,24 @@ export function ColourSection({ presetId, panel }: { presetId: string; panel: Re
 			<div className="vivy-tune-sub">gradient follows</div>
 			<div className="vivy-seg">
 				{own.gradients.map(([f, name, what]) => (
-					<button key={f} className={colours.follows === f ? "on" : ""} title={what} onClick={() => set({ follows: f })}>
+					<button
+						key={f}
+						className={colours.follows === f ? "on" : ""}
+						onMouseEnter={e => explain(what, e.currentTarget)}
+						onMouseLeave={unexplain}
+						onFocus={e => explain(what, e.currentTarget)}
+						onBlur={unexplain}
+						onClick={() => set({ follows: f })}
+					>
 						{name}
 					</button>
 				))}
 			</div>
-			<div className="vivy-tune-knob">
+			<div
+				className="vivy-tune-knob"
+				onMouseEnter={e => explain("Each part of a song has its own key, and the colours lean round the wheel with it. Zero keeps them exactly as they are. Double-click the name to reset.", e.currentTarget)}
+				onMouseLeave={unexplain}
+			>
 				<div className="vivy-tune-label" onDoubleClick={() => set({ harmony: 1 })}>
 					<span>the song's key turns the hue</span>
 					<span>{colours.harmony.toFixed(2)}</span>

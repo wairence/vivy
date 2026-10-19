@@ -4,7 +4,7 @@ import { loadTrackAudioData, loadTrackAudioFeatures, nearestBarStart, trackDataF
 import { lastConducted } from "./presets/flowfield-common";
 import { AudioSync, createSmoothClock } from "./audio-sync";
 import { BUILD, DEV } from "./build-stamp";
-import { hexToRgb } from "./colours";
+import { coverHues, hexToRgb } from "./colours";
 import { ColourSection } from "./colour-panel";
 import { Preset, PresetFrame, PRESETS } from "./presets";
 import { Knob, movedText, resetKnobs, setKnob, tuningOf } from "./presets/tune";
@@ -143,7 +143,7 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 	const [, redraw] = useState(0);
 	// the hint of the knob under the pointer (or in focus), drawn beside the panel rather than in it,
 	// where the panel's scrolling would cut it off
-	const [hint, setHint] = useState<{ knob: Knob; top: number; right: number } | null>(null);
+	const [hint, setHint] = useState<{ text: string; foot: string; top: number; right: number } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
 	// THE SCROLLBAR is our own, a hairline beside the content: Spotify styles every scrollbar in the
 	// client, and its fat white bar wins over anything set on the panel's
@@ -195,13 +195,16 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 		navigator.clipboard?.writeText(text || "nothing moved").catch(() => {});
 		Spicetify.showNotification(text ? "Moved knobs copied" : "Nothing moved yet");
 	};
-	const showHint = (knob: Knob, row: HTMLElement) => {
+	// any row of the panel can explain itself here: a knob, or one of the colour choices
+	const explain = (text: string, foot: string, row: HTMLElement) => {
 		const panel = panelRef.current;
 		const parent = panel?.offsetParent;
-		if (!knob.hint || !panel || !parent) return;
+		if (!text || !panel || !parent) return;
 		const p = parent.getBoundingClientRect();
-		setHint({ knob, top: row.getBoundingClientRect().top - p.top, right: p.right - panel.getBoundingClientRect().left + 10 });
+		setHint({ text, foot, top: row.getBoundingClientRect().top - p.top, right: p.right - panel.getBoundingClientRect().left + 10 });
 	};
+	const showHint = (knob: Knob, row: HTMLElement) =>
+		explain(knob.hint, `default ${+knob.def.toPrecision(3)} · double-click the name to reset`, row);
 	// a run of knobs under their group names; each run starts its own headings
 	const knobs = (list: Knob[]) => {
 		let group = "";
@@ -244,7 +247,7 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 				<IconButton small label="Reset all to defaults" icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
 				<IconButton small label="Close (T)" icon={ICON_CLOSE} onClick={onClose} />
 			</div>
-			<ColourSection key={presetId} presetId={presetId} panel={panelRef} />
+			<ColourSection key={presetId} presetId={presetId} panel={panelRef} explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} />
 			{!t || (t.knobs.length === 0 && t.features.length === 0) ? (
 				<div className="vivy-tune-none">This preset has no knobs yet.</div>
 			) : null}
@@ -273,10 +276,8 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 		{bar ? <div className="vivy-tune-bar" style={{ top: bar.top, height: bar.height, right: bar.right }} /> : null}
 		{hint ? (
 			<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
-				<div>{hint.knob.hint}</div>
-				<small>
-					default {+hint.knob.def.toPrecision(3)} · double-click the name to reset
-				</small>
+				<div>{hint.text}</div>
+				{hint.foot ? <small>{hint.foot}</small> : null}
 			</div>
 		) : null}
 		</>
@@ -300,7 +301,8 @@ export default function App() {
 	// audio/visual data is only read from the rAF loop, doesn't need to trigger a re-render
 	const audioDataRef = useRef<TrackAudioData | null>(null);
 	// the cover's palette, dark to light: what the new cover gives, and what is on screen on its way there
-	// (dark, vibrant, light, then the cover's other three: prominent, desaturated, vibrant-non-alarming)
+	// (dark, vibrant, light as Spotify extracts them; then the cover's own colours by area, or those
+	// three again for a cover of one colour - see coverHues)
 	const targetColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
 	const displayColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
 	const mousePosRef = useRef({ x: 0, y: 0 });
@@ -507,6 +509,27 @@ export default function App() {
 			// THE COVER'S PALETTE: three colours Spotify extracts from the art, dark to light. Where that
 			// fails, the one light colour it gives for the cover, three times
 			const stillHere = () => Spicetify.Player.data?.item?.uri === item.uri;
+			// the cover's pixels, small: what colours it has and how much of each (the image CDN allows it)
+			const readCover = (shades: { r: number; g: number; b: number }[]) => {
+				const url = item.metadata.image_url;
+				if (!url) return;
+				const img = new Image();
+				img.crossOrigin = "anonymous";
+				img.onload = () => {
+					try {
+						const c = document.createElement("canvas");
+						c.width = c.height = 48;
+						const cx = c.getContext("2d", { willReadFrequently: true });
+						if (!cx || !stillHere()) return;
+						cx.drawImage(img, 0, 0, 48, 48);
+						const hues = coverHues(cx.getImageData(0, 0, 48, 48).data);
+						if (hues.length >= 2) targetColorRef.current = [...shades, hues[0], hues[1], hues[2] ?? hues[1]];
+					} catch {
+						// a tainted canvas or no canvas: the shades stay
+					}
+				};
+				img.src = url.startsWith("spotify:image:") ? "https://i.scdn.co/image/" + url.slice(14) : url;
+			};
 			const single = () => {
 				if (!item.metadata.image_url) return;
 				Spicetify.extractColorPreset(item.metadata.image_url)
@@ -520,9 +543,12 @@ export default function App() {
 			};
 			Spicetify.colorExtractor(item.uri)
 				.then(c => {
-					const stops = [c.DARK_VIBRANT, c.VIBRANT, c.LIGHT_VIBRANT, c.PROMINENT, c.DESATURATED, c.VIBRANT_NON_ALARMING];
+					const stops = [c.DARK_VIBRANT, c.VIBRANT, c.LIGHT_VIBRANT];
 					if (!stops.every(hex => /^#[0-9a-f]{6}$/i.test(hex ?? ""))) return single();
-					if (stillHere()) targetColorRef.current = stops.map(hexToRgb);
+					if (!stillHere()) return;
+					const shades = stops.map(hexToRgb);
+					targetColorRef.current = [...shades, ...shades];
+					readCover(shades);
 				})
 				.catch(single);
 		};
