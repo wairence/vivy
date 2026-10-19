@@ -8,3 +8,11 @@ preview-harness.bundle.js
 shots/
 probe-log.json
 marks.jsonl
+
+# private, never published
+CLAUDE.md
+.claude/
+private/
+structure-labels.json
+# written by stamp.js on every build
+src/build-stamp.ts
