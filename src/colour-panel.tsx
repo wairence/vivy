@@ -75,7 +75,7 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 	const pure = hsvToHex({ h: hsv.h, s: 1, v: 1 });
 	return (
 		<div className="vivy-picker" style={{ top, right }} onMouseDown={e => e.stopPropagation()}>
-			<div className="vivy-picker-square" style={{ background: pure }} onPointerDown={square}>
+			<div className="vivy-picker-square" style={{ backgroundColor: pure }} onPointerDown={square}>
 				<div className="vivy-picker-dot" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%`, background: hsvToHex(hsv) }} />
 			</div>
 			<div className="vivy-picker-strip" onPointerDown={strip}>
