@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./css/app.css";
 import { loadTrackAudioData, loadTrackAudioFeatures, nearestBarStart, trackDataFromFeatures, TrackAudioData } from "./audio-data";
 import { lastConducted } from "./presets/flowfield-common";
 import { AudioSync, createSmoothClock } from "./audio-sync";
 import { BUILD, DEV } from "./build-stamp";
+import { coverHues, hexToRgb } from "./colours";
+import { ColourSection } from "./colour-panel";
 import { Preset, PresetFrame, PRESETS } from "./presets";
-import { movedText, resetKnobs, setKnob, tuningOf } from "./presets/tune";
+import { Knob, movedText, resetKnobs, setKnob, tuningOf } from "./presets/tune";
 
-// posts a diagnostic to the dev server (npm run live) so findings inside the Spotify client are
+// posts a diagnostic to the dev server (npm run preview) so findings inside the Spotify client are
 // readable from outside it; silently ignored when nothing is listening, which is every normal run
 function report(what: object) {
 	if (!DEV) return;
@@ -55,7 +57,7 @@ function reportGridOf(name: string, data: TrackAudioData) {
 		grid: name,
 		bars: data.bars.length,
 		barSeconds: Number(mean.toFixed(3)),
-		// 0 = every bar identical, 0.1 = ten percent variation. THE answer to "is the rhythm even"
+		// 0 = every bar identical, 0.1 = ten percent variation. the answer to "is the rhythm even"
 		barSpread: Number(spread.toFixed(3)),
 		barConfidence: Number(
 			(data.bars.reduce((s, b) => s + b.confidence, 0) / Math.max(1, data.bars.length)).toFixed(2)
@@ -110,9 +112,37 @@ const ICON_PIP = (
 const ICON_EXPAND = <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />;
 const ICON_SHRINK = <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />;
 
-function IconButton({ label, icon, active, onClick }: { label: string; icon: React.ReactNode; active?: boolean; onClick: () => void }) {
+const ICON_COPY = (
+	<>
+		<rect x="8" y="8" width="12" height="12" rx="2" />
+		<path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+	</>
+);
+const ICON_RESET = (
+	<>
+		<path d="M4 12a8 8 0 1 0 2.4-5.7" />
+		<path d="M4 4v4.5h4.5" />
+	</>
+);
+const ICON_CLOSE = <path d="M6 6l12 12M18 6L6 18" />;
+const ICON_PLAY = <path d="M8 5.5v13l10.5-6.5z" fill="currentColor" />;
+const ICON_PAUSE = <path d="M8.5 5.5v13M15.5 5.5v13" strokeWidth="2.6" />;
+const ICON_BACK = (
+	<>
+		<path d="M6.5 5.5v13" strokeWidth="2.2" />
+		<path d="M18.5 5.5v13L9 12z" fill="currentColor" />
+	</>
+);
+const ICON_NEXT = (
+	<>
+		<path d="M17.5 5.5v13" strokeWidth="2.2" />
+		<path d="M5.5 5.5v13L15 12z" fill="currentColor" />
+	</>
+);
+
+function IconButton({ label, icon, active, small, onClick }: { label: string; icon: React.ReactNode; active?: boolean; small?: boolean; onClick: () => void }) {
 	return (
-		<button className={`vivy-icon${active ? " active" : ""}`} title={label} aria-label={label} aria-pressed={!!active} onClick={onClick}>
+		<button className={`vivy-icon${small ? " small" : ""}${active ? " active" : ""}`} title={label} aria-label={label} aria-pressed={!!active} onClick={onClick}>
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
 				{icon}
 			</svg>
@@ -120,11 +150,53 @@ function IconButton({ label, icon, active, onClick }: { label: string; icon: Rea
 	);
 }
 
-// THE KNOB PANEL (T): every number the preset on screen offers, as a slider, turned while it plays.
+// The knob panel (T): every number the preset on screen offers, as a slider, turned while it plays.
 // Double-click a name to put that one back; "Copy" puts what was moved on the clipboard, to be written
 // back into the code as the new defaults.
 function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => void }) {
 	const [, redraw] = useState(0);
+	// the hint of the knob under the pointer (or in focus), drawn beside the panel rather than in it,
+	// where the panel's scrolling would cut it off
+	const [hint, setHint] = useState<{ text: string; foot: string; top: number; right: number } | null>(null);
+	const panelRef = useRef<HTMLDivElement>(null);
+	// The scrollbar is our own, a hairline beside the content: Spotify styles every scrollbar in the
+	// client, and its fat white bar wins over anything set on the panel's
+	const [bar, setBar] = useState<{ top: number; height: number; right: number } | null>(null);
+	const measureBar = () => {
+		const p = panelRef.current;
+		const parent = p?.offsetParent;
+		if (!p || !parent || p.scrollHeight <= p.clientHeight + 1) return setBar(b => (b ? null : b));
+		const box = parent.getBoundingClientRect();
+		const r = p.getBoundingClientRect();
+		const height = Math.max(24, (p.clientHeight / p.scrollHeight) * (r.height - 16));
+		const top = r.top - box.top + 8 + (p.scrollTop / (p.scrollHeight - p.clientHeight)) * (r.height - 16 - height);
+		const right = box.right - r.right + 3;
+		setBar(b => (b && Math.abs(b.top - top) < 0.5 && Math.abs(b.height - height) < 0.5 && b.right === right ? b : { top, height, right }));
+	};
+	useLayoutEffect(measureBar);
+	useEffect(() => {
+		window.addEventListener("resize", measureBar);
+		return () => window.removeEventListener("resize", measureBar);
+	}, []);
+	// the few settings most people want, and the rest behind "More"; which one is open is remembered
+	const [more, setMore] = useState(() => {
+		try {
+			return localStorage.getItem("vivy:more") === "1";
+		} catch {
+			return false;
+		}
+	});
+	const toggleMore = () => {
+		setHint(null);
+		setMore(open => {
+			try {
+				localStorage.setItem("vivy:more", open ? "0" : "1");
+			} catch {
+				// storage denied: it opens closed next time
+			}
+			return !open;
+		});
+	};
 	const t = tuningOf(presetId);
 	const refresh = () => redraw(n => n + 1);
 	// a feature flipped with its number key shows here too (the preset's own listener runs first)
@@ -137,48 +209,92 @@ function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => voi
 		navigator.clipboard?.writeText(text || "nothing moved").catch(() => {});
 		Spicetify.showNotification(text ? "Moved knobs copied" : "Nothing moved yet");
 	};
-	let group = "";
+	// any row of the panel can explain itself here: a knob, or one of the colour choices
+	const explain = (text: string, foot: string, row: HTMLElement) => {
+		const panel = panelRef.current;
+		const parent = panel?.offsetParent;
+		if (!text || !panel || !parent) return;
+		const p = parent.getBoundingClientRect();
+		setHint({ text, foot, top: row.getBoundingClientRect().top - p.top, right: p.right - panel.getBoundingClientRect().left + 10 });
+	};
+	const showHint = (knob: Knob, row: HTMLElement) =>
+		explain(knob.hint, `default ${+knob.def.toPrecision(3)} · double-click the name to reset`, row);
+	// a run of knobs under their group names; each run starts its own headings
+	const knobs = (list: Knob[]) => {
+		let group = "";
+		return list.map(k => {
+			const value = t!.values[k.key];
+			const head = k.group !== group ? <div className="vivy-tune-group">{(group = k.group)}</div> : null;
+			return (
+				<React.Fragment key={k.key}>
+					{head}
+					<div
+						className={`vivy-tune-knob${value !== k.def ? " moved" : ""}`}
+						onMouseEnter={e => showHint(k, e.currentTarget)}
+						onMouseLeave={() => setHint(null)}
+						onFocus={e => showHint(k, e.currentTarget)}
+						onBlur={() => setHint(null)}
+					>
+						<div className="vivy-tune-label" onDoubleClick={() => (setKnob(presetId, k.key, k.def), refresh())}>
+							<span>{k.label}</span>
+							<span>{+value.toPrecision(3)}</span>
+						</div>
+						<input
+							type="range"
+							min={k.min}
+							max={k.max}
+							step={(k.max - k.min) / 400}
+							value={value}
+							onChange={e => (setKnob(presetId, k.key, Number(e.target.value)), refresh())}
+						/>
+					</div>
+				</React.Fragment>
+			);
+		});
+	};
 	return (
-		<div className="vivy-tune" onMouseDown={e => e.stopPropagation()}>
+		<>
+		<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => (setHint(null), measureBar())}>
 			<div className="vivy-tune-head">
 				<b>Knobs</b>
-				<button onClick={copy}>Copy</button>
-				<button onClick={() => (resetKnobs(presetId), refresh())}>Reset</button>
-				<button onClick={onClose}>{"×"}</button>
+				<IconButton small label="Copy moved values" icon={ICON_COPY} onClick={copy} />
+				<IconButton small label="Reset all to defaults" icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
+				<IconButton small label="Close (T)" icon={ICON_CLOSE} onClick={onClose} />
 			</div>
+			<ColourSection key={presetId} presetId={presetId} panel={panelRef} explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} />
 			{!t || (t.knobs.length === 0 && t.features.length === 0) ? (
 				<div className="vivy-tune-none">This preset has no knobs yet.</div>
 			) : null}
-			{t?.features.map((f, i) => (
-				<label key={f.name} className="vivy-tune-feature">
-					<input type="checkbox" checked={f.on} onChange={() => ((f.on = !f.on), refresh())} />
-					{i + 1}. {f.name}
-				</label>
-			))}
-			{t?.knobs.map(k => {
-				const value = t.values[k.key];
-				const head = k.group !== group ? <div className="vivy-tune-group">{(group = k.group)}</div> : null;
-				return (
-					<React.Fragment key={k.key}>
-						{head}
-						<div className={`vivy-tune-knob${value !== k.def ? " moved" : ""}`}>
-							<div className="vivy-tune-label" title={`${k.key} (default ${k.def}). Double-click resets`} onDoubleClick={() => (setKnob(presetId, k.key, k.def), refresh())}>
-								<span>{k.label}</span>
-								<span>{+value.toPrecision(3)}</span>
-							</div>
-							<input
-								type="range"
-								min={k.min}
-								max={k.max}
-								step={(k.max - k.min) / 400}
-								value={value}
-								onChange={e => (setKnob(presetId, k.key, Number(e.target.value)), refresh())}
-							/>
-						</div>
-					</React.Fragment>
-				);
-			})}
+			{t ? knobs(t.knobs.filter(k => k.basic)) : null}
+			{t && (t.features.length > 0 || t.knobs.some(k => !k.basic)) ? (
+				<button className={`vivy-more${more ? " on" : ""}`} aria-expanded={more} onClick={toggleMore}>
+					<span>{more ? "Fewer settings" : "More settings"}</span>
+					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<path d="M6 9l6 6 6-6" />
+					</svg>
+				</button>
+			) : null}
+			{t && more ? (
+				<>
+					{t.features.length > 0 ? <div className="vivy-tune-group">effects</div> : null}
+					{t.features.map((f, i) => (
+						<label key={f.name} className="vivy-tune-feature">
+							<input type="checkbox" checked={f.on} onChange={() => ((f.on = !f.on), refresh())} />
+							{i + 1}. {f.name}
+						</label>
+					))}
+					{knobs(t.knobs.filter(k => !k.basic))}
+				</>
+			) : null}
 		</div>
+		{bar ? <div className="vivy-tune-bar" style={{ top: bar.top, height: bar.height, right: bar.right }} /> : null}
+		{hint ? (
+			<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
+				<div>{hint.text}</div>
+				{hint.foot ? <small>{hint.foot}</small> : null}
+			</div>
+		) : null}
+		</>
 	);
 }
 
@@ -198,15 +314,11 @@ export default function App() {
 
 	// audio/visual data is only read from the rAF loop, doesn't need to trigger a re-render
 	const audioDataRef = useRef<TrackAudioData | null>(null);
-	const targetColorRef = useRef(DEFAULT_RGB);
-	const displayColorRef = useRef(DEFAULT_RGB);
-	const mousePosRef = useRef({ x: 0, y: 0 });
-	const mouseClicksRef = useRef(0);
-	const mouseRightClicksRef = useRef(0);
-	const mouseDownRef = useRef(false);
-	const mouseRightDownRef = useRef(false);
-	const mouseScrollRef = useRef(0.5);
-	const mouseParticleScaleRef = useRef(0.5);
+	// the cover's palette, dark to light: what the new cover gives, and what is on screen on its way there
+	// (dark, vibrant, light as Spotify extracts them; then the cover's own colours by area, or those
+	// three again for a cover of one colour - see coverHues)
+	const targetColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
+	const displayColorRef = useRef(Array.from({ length: 6 }, () => DEFAULT_RGB));
 	const presetRef = useRef<Preset>();
 	const presetMadeFor = useRef("");
 	if (!presetRef.current) {
@@ -214,10 +326,10 @@ export default function App() {
 		presetMadeFor.current = presetId;
 	}
 
-	// Which build is actually running. Twice now a session has been spent tuning against a client
-	// that was still executing the previous bundle: `spicetify apply` writes index.js to disk, and
-	// the client reads it once, at startup. There is no way to tell from inside the picture, and
-	// "nothing changed" is the same sentence whether the change failed or never loaded.
+	// Which build is actually running. `spicetify apply` writes index.js to disk, and the client
+	// reads it once, at startup, so tuning can go on against a client still executing the previous
+	// bundle. There is no way to tell from inside the picture, and "nothing changed" is the same
+	// sentence whether the change failed or never loaded.
 	useEffect(() => {
 		if (DEV) Spicetify.showNotification(`Visualizer build ${BUILD}`);
 	}, []);
@@ -233,8 +345,8 @@ export default function App() {
 			// not remembered: the first preset next time
 		}
 
-		// otherwise a trail-based preset starts by fading out whatever the previous preset left
-		// on screen, which reads as a stuck afterimage for a second or more
+		// clear what the previous preset left, or a preset that fades its last frame starts by fading
+		// that out, which reads as a stuck afterimage for a second or more
 		const canvas = canvasRef.current;
 		canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
 	}, [presetId]);
@@ -273,22 +385,21 @@ export default function App() {
 
 			audioDataRef.current = null;
 			// the colour stays the last track's until the new cover's is known: going by way of the
-			// default was a flash of green between every two songs
+			// default would flash green between every two songs
 			if (!item?.uri) return;
 
 			// Spicetify.getAudioData is an undocumented internal endpoint and fails transiently often
 			// enough to be worth one retry before giving up on the track.
 			//
-			// A track WITHOUT analysis degrades in a way that looks like a bug rather than like a
-			// missing feature, which is why it now says so out loud: `currentEnergy` falls back to a
-			// plain sine, no beats means beatHit never fires so percussion never appears at all, and
-			// no segments means attackSharpness/harmonicShift/brightness all sit at zero. The result
-			// is small particles drifting in slow waves - identical on every preset, because the
-			// cause is upstream of all of them. Silently looking broken is worse than saying "no
+			// A track without analysis degrades in a way that looks like a bug rather than like a
+			// missing feature, so it says so out loud: `currentEnergy` falls back to a plain sine, no
+			// beats means beatHit never fires, and no segments means attackSharpness/harmonicShift/
+			// brightness all sit at zero. The result is the same slow drift on every preset, because
+			// the cause is upstream of all of them. Silently looking broken is worse than saying "no
 			// analysis for this one".
 			const announceMissing = (why: string) => {
 				if (!alive || Spicetify.Player.data?.item?.uri !== item.uri) return;
-				// No timeline for this track. Its audio FEATURES may still exist on the sibling endpoint,
+				// No timeline for this track. Its audio features may still exist on the sibling endpoint,
 				// which is enough for the real tempo and the real loudness - a genuine pulse instead of
 				// the plain sine the presets otherwise fall back to
 				loadTrackAudioFeatures(item.uri)
@@ -320,10 +431,9 @@ export default function App() {
 						// beats can legitimately be sparse; none at all is still a timeline worth more than the
 						// tempo-only stand-in, so it is kept
 						// The hits come from inflating `rhythmstring` in the browser, and `strike` falls
-						// back to the old segment rule when that cannot be done. Silently - which is the
-						// one thing that must not happen here, since "nothing changed" has already cost
-						// several rounds of looking for a bug in code that was never running. Said once
-						// per session, and only when the track HAD a rhythmstring to decode.
+						// back to the segment rule when that cannot be done. That must not happen
+						// silently, or a bug gets looked for in code that was never running. Said once
+						// per session, and only when the track had a rhythmstring to decode.
 						if (DEV && !hitsWarned && data.hits.length === 0 && typeof data.trackInfo.rhythmstring === "string") {
 							hitsWarned = true;
 							Spicetify.showNotification("Visualizer: rhythm onsets unavailable, hits fall back to segments", true);
@@ -335,10 +445,8 @@ export default function App() {
 							headers: { "Content-Type": "text/plain" },
 							body: JSON.stringify({
 								name: item.name,
-								// everything the endpoint gives, not just what a preset happens to read today. The
-								// dumps were missing beats, sections and tatums entirely, so every offline probe
-								// that asked for beats silently got BARS instead - a quarter of the real pulse -
-								// and no measurement of the track-level summary was possible at all
+								// everything the endpoint gives, not just what a preset happens to read today, so
+								// offline probes see the beats, sections, tatums and the track-level summary
 								// minus the fingerprints. `codestring` and `echoprintstring` are acoustic IDs for
 								// matching a recording against a database - 24k characters of no use to a
 								// visualiser - while `rhythmstring` and `synchstring` are timing data and are kept
@@ -376,10 +484,9 @@ export default function App() {
 								])
 							})
 						})
-							// Silence was the bug here. The POST failing is the normal case - the dev server is
-							// usually not running - so it was swallowed, and a collecting session that produced
-							// nothing looked exactly like one that worked. A confirmation only on SUCCESS costs
-							// nothing when nobody is collecting and is the whole signal when somebody is.
+							// The POST failing is the normal case - the dev server is usually not running - so a
+							// failure is swallowed. A confirmation only on success costs nothing when nobody is
+							// collecting and is the whole signal when somebody is.
 							.then(res => {
 								if (res.ok) Spicetify.showNotification(`Analysis dumped: ${item.name}`);
 							})
@@ -396,22 +503,56 @@ export default function App() {
 			// only a Spotify track has an analysis: a local file's "id" is its length, an episode or an ad has
 			// none, and asking costs six requests and ends in an error toast
 			if (item.uri.startsWith("spotify:track:")) attempt(1);
-			// THE NEXT TRACK'S ANALYSIS, AHEAD OF TIME, so that when the player moves on by itself there is
+			// The next track's analysis, ahead of time, so that when the player moves on by itself there is
 			// no gap for the picture to wait through. A skip to anywhere else still waits.
 			const next = (Spicetify.Queue?.nextTracks?.[0] as { contextTrack?: { uri?: unknown } } | undefined)?.contextTrack?.uri;
 			if (typeof next === "string" && next.startsWith("spotify:track:")) loadAnalysis(next).catch(() => {});
 
-			if (item.metadata.image_url) {
+			// The cover's palette: three colours Spotify extracts from the art, dark to light. Where that
+			// fails, the one light colour it gives for the cover, three times
+			const stillHere = () => Spicetify.Player.data?.item?.uri === item.uri;
+			// the cover's pixels, small: what colours it has and how much of each (the image CDN allows it)
+			const readCover = (shades: { r: number; g: number; b: number }[]) => {
+				const url = item.metadata.image_url;
+				if (!url) return;
+				const img = new Image();
+				img.crossOrigin = "anonymous";
+				img.onload = () => {
+					try {
+						const c = document.createElement("canvas");
+						c.width = c.height = 48;
+						const cx = c.getContext("2d", { willReadFrequently: true });
+						if (!cx || !stillHere()) return;
+						cx.drawImage(img, 0, 0, 48, 48);
+						const hues = coverHues(cx.getImageData(0, 0, 48, 48).data);
+						if (hues.length >= 2) targetColorRef.current = [...shades, hues[0], hues[1], hues[2] ?? hues[1]];
+					} catch {
+						// a tainted canvas or no canvas: the shades stay
+					}
+				};
+				img.src = url.startsWith("spotify:image:") ? "https://i.scdn.co/image/" + url.slice(14) : url;
+			};
+			const single = () => {
+				if (!item.metadata.image_url) return;
 				Spicetify.extractColorPreset(item.metadata.image_url)
 					.then(colors => {
-						if (Spicetify.Player.data?.item?.uri !== item.uri) return;
 						const rgb = colors[0]?.colorLight?.rgb;
-						if (rgb) targetColorRef.current = rgb;
+						if (rgb && stillHere()) targetColorRef.current = Array.from({ length: 6 }, () => rgb);
 					})
 					.catch(() => {
-						// keep the default color
+						// keep the last colours
 					});
-			}
+			};
+			Spicetify.colorExtractor(item.uri)
+				.then(c => {
+					const stops = [c.DARK_VIBRANT, c.VIBRANT, c.LIGHT_VIBRANT];
+					if (!stops.every(hex => /^#[0-9a-f]{6}$/i.test(hex ?? ""))) return single();
+					if (!stillHere()) return;
+					const shades = stops.map(hexToRgb);
+					targetColorRef.current = [...shades, ...shades];
+					readCover(shades);
+				})
+				.catch(single);
 		};
 
 		const songChangeListener = (event?: Event & { data: Spicetify.PlayerState }) => updateTrack(event?.data);
@@ -424,19 +565,15 @@ export default function App() {
 		};
 	}, []);
 
-	// ---- looking, rather than describing --------------------------------------------------------
-	// B marks the moment as wrong. V flips between parameter sets, live.
-	//
-	// Every round so far has gone: build, deploy, restart, watch, DESCRIBE IN WORDS, mis-read the
-	// description, repeat - half an hour a turn, and the words are the part that fails. Nobody can
-	// specify a picture that has never existed. Recognising one is easy, so these two make
-	// recognition the only thing being asked for.
+	// ---- keys -----------------------------------------------------------------------------------
+	// P mini window, T knobs, F fullscreen, 1-9 effects on or off; in dev builds B marks the moment as
+	// wrong.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.ctrlKey || e.altKey || e.metaKey) return;
 			const key = e.key.toLowerCase();
-			// 1-9 switch one feature of the preset on screen on or off, for the same reason V exists:
-			// "is the picture better without this?" is answered by looking, not by describing
+			// 1-9 switch one feature of the preset on screen on or off: "is the picture better
+			// without this?" is answered by looking
 			const digit = /^[1-9]$/.test(key);
 			if ((key !== "b" || !DEV) && key !== "p" && key !== "t" && key !== "f" && !digit) return;
 			const target = e.target as HTMLElement | null;
@@ -463,7 +600,7 @@ export default function App() {
 				return;
 			}
 
-			// what the machine believed at the instant the eye disagreed with it
+			// what the visualiser believed at the moment it was marked
 			const c = lastConducted;
 			const item = Spicetify.Player.data?.item;
 			const mark: Record<string, unknown> = {
@@ -495,8 +632,7 @@ export default function App() {
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
-		// opaque: the trail canvas is never composited against anything behind it, and fadeTrail's
-		// black-floor pass needs a real backdrop to blend against (see effects.ts)
+		// opaque: the canvas is never composited against anything behind it
 		const ctx = canvas.getContext("2d", { alpha: false });
 		if (!ctx) return;
 
@@ -521,70 +657,12 @@ export default function App() {
 		};
 		resize();
 		// The presets are written for one canvas size and scaled to whatever they are given, so the
-		// size itself has to be readable from inside the client - it is the only number the tuning
-		// is relative to, and it is invisible from the outside.
+		// size is reported from inside the client: it is the number the tuning is relative to.
 		if (DEV) Spicetify.showNotification(`Visualizer canvas ${canvas.width}x${canvas.height}`);
-		mousePosRef.current = { x: canvas.width / 2, y: canvas.height / 2 };
 		window.addEventListener("resize", resize);
 		const boxWatch = typeof ResizeObserver === "function" ? new ResizeObserver(() => resize()) : null;
 		boxWatch?.observe(canvas);
 
-		const onMouseMove = (event: MouseEvent) => {
-			const rect = canvas.getBoundingClientRect();
-			mousePosRef.current = {
-				x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-				y: ((event.clientY - rect.top) / rect.height) * canvas.height
-			};
-		};
-		canvas.addEventListener("mousemove", onMouseMove);
-
-		const onMouseDown = (event: MouseEvent) => {
-			if (event.button === 2) {
-				mouseRightClicksRef.current++;
-				mouseRightDownRef.current = true;
-			} else {
-				mouseClicksRef.current++;
-				mouseDownRef.current = true;
-			}
-		};
-		canvas.addEventListener("mousedown", onMouseDown);
-
-		// holding the button "paints" a trail of the same gesture instead of just one press - both
-		// released together on mouseup/leaving the canvas/losing focus, so a stuck "held" state can't
-		// survive the cursor leaving the window mid-drag
-		const onMouseUp = (event: MouseEvent) => {
-			if (event.button === 2) mouseRightDownRef.current = false;
-			else mouseDownRef.current = false;
-		};
-		window.addEventListener("mouseup", onMouseUp);
-		const onMouseLeave = () => {
-			mouseDownRef.current = false;
-			mouseRightDownRef.current = false;
-		};
-		canvas.addEventListener("mouseleave", onMouseLeave);
-		window.addEventListener("blur", onMouseLeave);
-
-		// right click drives its own gesture instead of opening Spotify's context menu
-		const onContextMenu = (event: MouseEvent) => event.preventDefault();
-		canvas.addEventListener("contextmenu", onContextMenu);
-
-		const onWheel = (event: WheelEvent) => {
-			event.preventDefault();
-			// alt+wheel: how many particles a preset runs with, instead of the speed fader
-			if (event.altKey) {
-				mouseParticleScaleRef.current = Math.max(
-					0,
-					Math.min(1, mouseParticleScaleRef.current - event.deltaY * 0.0006)
-				);
-			} else {
-				mouseScrollRef.current = Math.max(0, Math.min(1, mouseScrollRef.current - event.deltaY * 0.0006));
-			}
-		};
-		canvas.addEventListener("wheel", onWheel, { passive: false });
-
-		let prevMouseX = mousePosRef.current.x;
-		let prevMouseY = mousePosRef.current.y;
-		let mouseSpeed = 0;
 		const audioSync = new AudioSync();
 		const smoothClock = createSmoothClock();
 
@@ -595,23 +673,16 @@ export default function App() {
 		let lastColourAt = performance.now();
 		const render = () => {
 			const target = targetColorRef.current;
-			const display = displayColorRef.current;
 			// the palette comes round to a new cover over a couple of seconds - by the clock, not by the
-			// frame: `* 0.05` a frame was a quarter of a second on a 240 Hz screen and a whole one at 60
+			// frame, so it takes as long on a 240 Hz screen as at 60
 			const wall = performance.now();
 			const colourStep = 1 - Math.exp(-Math.min(0.1, (wall - lastColourAt) / 1000) / 0.6);
 			lastColourAt = wall;
-			displayColorRef.current = {
-				r: display.r + (target.r - display.r) * colourStep,
-				g: display.g + (target.g - display.g) * colourStep,
-				b: display.b + (target.b - display.b) * colourStep
-			};
-
-			const mousePos = mousePosRef.current;
-			const rawSpeed = Math.hypot(mousePos.x - prevMouseX, mousePos.y - prevMouseY);
-			mouseSpeed = mouseSpeed * 0.8 + rawSpeed * 0.2;
-			prevMouseX = mousePos.x;
-			prevMouseY = mousePos.y;
+			displayColorRef.current = displayColorRef.current.map((d, i) => ({
+				r: d.r + (target[i].r - d.r) * colourStep,
+				g: d.g + (target[i].g - d.g) * colourStep,
+				b: d.b + (target[i].b - d.b) * colourStep
+			}));
 
 			const isPlaying = Spicetify.Player.isPlaying();
 			const frame: PresetFrame = {
@@ -621,18 +692,9 @@ export default function App() {
 				progressSec: smoothClock(Spicetify.Player.getProgress() / 1000, isPlaying, performance.now() / 1000) - audioSync.getLatencySec(),
 				isPlaying,
 				audio: audioDataRef.current,
-				colorRgb: displayColorRef.current,
-				mouse: {
-					x: mousePos.x,
-					y: mousePos.y,
-					speed: mouseSpeed,
-					clicks: mouseClicksRef.current,
-					rightClicks: mouseRightClicksRef.current,
-					down: mouseDownRef.current,
-					rightDown: mouseRightDownRef.current,
-					scroll: mouseScrollRef.current,
-					particleScale: mouseParticleScaleRef.current
-				}
+				colorRgb: displayColorRef.current[1],
+				palette: displayColorRef.current.slice(0, 3),
+				coverColours: displayColorRef.current
 			};
 			try {
 				presetRef.current!.draw(frame);
@@ -644,8 +706,8 @@ export default function App() {
 
 			schedule();
 		};
-		// THE FRAME CLOCK IS THE WINDOW'S THE CANVAS IS IN. A window nobody can see gets no animation
-		// frames - and the whole point of the little window is that Spotify itself is behind a game.
+		// The frame clock is that of the window the canvas is in. A window nobody can see gets no
+		// animation frames, and the little window exists for when Spotify itself is behind another app.
 		const schedule = () => {
 			if (disposed) return;
 			requestWindow = host();
@@ -661,12 +723,12 @@ export default function App() {
 		// Document Picture-in-Picture: a real always-on-top window (the thing Spotify's own miniplayer
 		// is made of), and the canvas itself is moved into it rather than copied - so the preset draws
 		// at the window's own size, once. It sits above other windows and borderless-fullscreen apps;
-		// a game in EXCLUSIVE fullscreen owns the screen and nothing of ours can be put over that.
+		// a game in exclusive fullscreen owns the screen and nothing of ours can be put over that.
 		//
-		// THE WINDOW HAS NO FRAME in this client - no title bar to drag, no visible edge to pull. It is
-		// moved and sized the way Spotify's miniplayer does it, read out of its own code: a region of
-		// the page marked `-webkit-app-region: drag`, and `resizeTo` / `moveTo` on the window. With
-		// neither, it could be opened and then could not be put anywhere.
+		// The window has no frame in this client - no title bar to drag, no visible edge to pull. It is
+		// moved and sized the way Spotify's miniplayer does it: a region of the page marked
+		// `-webkit-app-region: drag`, and `resizeTo` / `moveTo` on the window. Without them it could
+		// be opened but not put anywhere.
 		let pip: Window | null = null;
 		const container = canvas.parentElement;
 		const PLACE_KEY = "vivy:pip-place";
@@ -744,14 +806,14 @@ export default function App() {
 						}
 					}
 
-					// MOVING: the whole picture is the handle - grab it anywhere. All but a rim: a drag
+					// Moving: the whole picture is the handle - grab it anywhere. All but a rim: a drag
 					// region that reaches the border takes the border's resize grip with it.
 					const handle = doc.createElement("div");
 					handle.style.cssText = "position:fixed;inset:10px;-webkit-app-region:drag;app-region:drag;cursor:grab";
 					handle.title = "Drag to move. Wheel, + and - resize. Esc closes.";
 					doc.body.append(handle);
 
-					// SIZING: the wheel and + / - scale it about its own shape; the corner buttons are for a
+					// Sizing: the wheel and + / - scale it about its own shape; the corner buttons are for a
 					// mouse that would rather click. (The rim and the client's own edges still work too.)
 					const scaleBy = (factor: number) => sizeTo(opened, opened.innerWidth * factor, opened.innerHeight * factor);
 					opened.addEventListener(
@@ -762,24 +824,33 @@ export default function App() {
 						},
 						{ passive: false }
 					);
-					const button = (label: string, right: number, hint: string, act: () => void) => {
+					// the same round icon buttons as the main view's, drawn as icons: a text "+" or "x" sits on
+					// the font's baseline, not in the middle of its circle
+					const button = (path: string, right: number, hint: string, act: () => void) => {
 						const b = doc.createElement("div");
-						b.textContent = label;
 						b.title = hint;
+						b.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="${path}"/></svg>`;
 						b.style.cssText =
-							`position:fixed;top:6px;right:${right}px;width:22px;height:22px;border-radius:11px;` +
-							"font:600 14px/22px system-ui,sans-serif;text-align:center;color:#fff;background:rgba(255,255,255,0.14);" +
-							"opacity:0;transition:opacity 0.4s ease;cursor:pointer;user-select:none;-webkit-app-region:no-drag;app-region:no-drag;z-index:2";
+							`position:fixed;top:8px;right:${right}px;width:28px;height:28px;box-sizing:border-box;border-radius:50%;` +
+							"display:grid;place-items:center;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.45);" +
+							"border:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(12px);" +
+							"opacity:0;transition:opacity 0.4s ease,background 0.2s ease,color 0.2s ease;cursor:pointer;user-select:none;-webkit-app-region:no-drag;app-region:no-drag;z-index:2";
 						b.addEventListener("mouseenter", () => {
 							wake();
 							b.style.opacity = "1";
+							b.style.color = "#fff";
+							b.style.background = "rgba(255,255,255,0.16)";
 						});
-						b.addEventListener("mouseleave", wake);
+						b.addEventListener("mouseleave", () => {
+							b.style.color = "rgba(255,255,255,0.8)";
+							b.style.background = "rgba(0,0,0,0.45)";
+							wake();
+						});
 						b.addEventListener("click", act);
 						doc.body.append(b);
 						buttons.push(b);
 					};
-					// THE BUTTONS GO OUT WHEN NOTHING IS HAPPENING, like the bar in the main view, and come
+					// The buttons go out when nothing is happening, like the bar in the main view, and come
 					// back on any sign of a hand. A faded button still takes the mouse, so the corner
 					// answers even if the drag handle over the picture keeps mouse moves to itself.
 					const buttons: HTMLElement[] = [];
@@ -793,12 +864,12 @@ export default function App() {
 					};
 					for (const sign of ["mousemove", "mousedown", "wheel", "keydown", "focus"]) opened.addEventListener(sign, wake, true);
 					doc.documentElement.addEventListener("mouseenter", wake);
-					button("\u00d7", 6, "Close (Esc)", () => opened.close());
-					button("+", 34, "Bigger (+ or wheel up)", () => scaleBy(1.25));
-					button("\u2212", 62, "Smaller (- or wheel down)", () => scaleBy(0.8));
+					button("M6 6l12 12M18 6L6 18", 8, "Close (Esc)", () => opened.close());
+					button("M12 5v14M5 12h14", 42, "Bigger (+ or wheel up)", () => scaleBy(1.25));
+					button("M5 12h14", 76, "Smaller (- or wheel down)", () => scaleBy(0.8));
 					wake();
 
-					// KEYS: its own, and everything else goes to the visualizer as if typed there
+					// Keys: its own, and everything else goes to the visualizer as if typed there
 					opened.addEventListener("keydown", event => {
 						if (event.key === "Escape") opened.close();
 						else if (event.key === "+" || event.key === "=") scaleBy(1.25);
@@ -821,13 +892,6 @@ export default function App() {
 		return () => {
 			window.removeEventListener("resize", resize);
 			boxWatch?.disconnect();
-			canvas.removeEventListener("mousemove", onMouseMove);
-			canvas.removeEventListener("mousedown", onMouseDown);
-			window.removeEventListener("mouseup", onMouseUp);
-			canvas.removeEventListener("mouseleave", onMouseLeave);
-			window.removeEventListener("blur", onMouseLeave);
-			canvas.removeEventListener("contextmenu", onContextMenu);
-			canvas.removeEventListener("wheel", onWheel);
 			// leaving the visualizer page takes the little window with it: its canvas has no loop left
 			togglePipRef.current = () => {};
 			disposed = true;
@@ -871,10 +935,45 @@ export default function App() {
 	toggleFullscreenRef.current = toggleFullscreen;
 
 	const [progressDisplay, setProgressDisplay] = useState(0);
+	const [playing, setPlaying] = useState(false);
+	// while the bar is held, where it would seek to (shown, not yet sought)
+	const [scrub, setScrub] = useState<number | null>(null);
 	useEffect(() => {
-		const id = window.setInterval(() => setProgressDisplay(Spicetify.Player.getProgress()), 500);
-		return () => window.clearInterval(id);
+		const tick = () => {
+			setProgressDisplay(Spicetify.Player.getProgress());
+			setPlaying(Spicetify.Player.isPlaying());
+		};
+		tick();
+		const id = window.setInterval(tick, 500);
+		Spicetify.Player.addEventListener("onplaypause", tick);
+		return () => {
+			window.clearInterval(id);
+			Spicetify.Player.removeEventListener("onplaypause", tick);
+		};
 	}, []);
+	// IN FULLSCREEN THE PLAYER IS HIDDEN, so the overlay is one: the bar seeks (click, or drag and let
+	// go), and back / play / next sit under it. Outside fullscreen Spotify's own player is right there.
+	const seekFrom = (e: React.PointerEvent<HTMLDivElement>) => {
+		const bar = e.currentTarget;
+		const at = (x: number) => {
+			const r = bar.getBoundingClientRect();
+			return Math.max(0, Math.min(1, (x - r.left) / r.width));
+		};
+		bar.setPointerCapture(e.pointerId);
+		setScrub(at(e.clientX));
+		const move = (ev: PointerEvent) => setScrub(at(ev.clientX));
+		const up = (ev: PointerEvent) => {
+			bar.removeEventListener("pointermove", move);
+			bar.removeEventListener("pointerup", up);
+			const ms = at(ev.clientX) * (track?.durationMs ?? 0);
+			Spicetify.Player.seek(ms);
+			setProgressDisplay(ms);
+			setScrub(null);
+		};
+		bar.addEventListener("pointermove", move);
+		bar.addEventListener("pointerup", up);
+	};
+	const shownMs = scrub !== null && track ? scrub * track.durationMs : progressDisplay;
 
 	return (
 		<div className={`vivy-container${uiVisible ? "" : " vivy-idle"}`} ref={containerRef}>
@@ -909,15 +1008,27 @@ export default function App() {
 						<>
 							<div className="vivy-track-name">{track.name}</div>
 							<div className="vivy-track-artist">{track.artist}</div>
-							<div className="vivy-progress-track">
-								<div
-									className="vivy-progress-fill"
-									style={{ width: `${track.durationMs ? (progressDisplay / track.durationMs) * 100 : 0}%` }}
-								/>
+							<div
+								className={`vivy-progress-track${isFullscreen ? " seek" : ""}${scrub !== null ? " held" : ""}`}
+								onPointerDown={isFullscreen ? seekFrom : undefined}
+								role={isFullscreen ? "slider" : undefined}
+								aria-label={isFullscreen ? "Seek" : undefined}
+								aria-valuemin={0}
+								aria-valuemax={Math.round(track.durationMs / 1000)}
+								aria-valuenow={Math.round(shownMs / 1000)}
+							>
+								<div className="vivy-progress-fill" style={{ width: `${track.durationMs ? (shownMs / track.durationMs) * 100 : 0}%` }} />
 							</div>
 							<div className="vivy-time">
-								{formatTime(progressDisplay)} / {formatTime(track.durationMs)}
+								{formatTime(shownMs)} / {formatTime(track.durationMs)}
 							</div>
+							{isFullscreen ? (
+								<div className="vivy-controls">
+									<IconButton label="Previous" icon={ICON_BACK} onClick={() => Spicetify.Player.back()} />
+									<IconButton label={playing ? "Pause" : "Play"} icon={playing ? ICON_PAUSE : ICON_PLAY} onClick={() => Spicetify.Player.togglePlay()} />
+									<IconButton label="Next" icon={ICON_NEXT} onClick={() => Spicetify.Player.next()} />
+								</div>
+							) : null}
 						</>
 					) : (
 						<div className="vivy-track-name">Start playing a song</div>

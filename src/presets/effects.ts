@@ -2,7 +2,7 @@ import { sectionIndexAt, TrackAudioData } from "../audio-data";
 
 type Segment = SpotifyAudioAnalysis["segments"][number];
 
-// a shimmering, iridescent tint for a hit (kick/snare) - rotates the base colour's channels through
+// a shimmering, iridescent tint for a hit (kick/snare), used by Drift - rotates the base colour's channels through
 // a slowly cycling phase (cheap, no HSL math) and blends it in proportional to `amount`, so each hit
 // flashes a slightly different hue instead of one fixed accent colour
 export function shimmerPhase(t: number): number {
@@ -46,18 +46,18 @@ export function timbreBrightness(segment: Segment | null): number {
 	return Math.max(-1, Math.min(1, (segment.timbre[1] || 0) / 100));
 }
 
-// THE HARMONY'S COLOUR: each section of the track has its own key in the analysis, and the palette
+// The harmony's colour: each section of the track has its own key in the analysis, and the palette
 // leans off the album's hue by how far that key sits from the track's home key on the circle of
 // fifths. In the home key the colour is the album's own. Measured over 105 tracks: a section's key
 // differs from the last one 1.6 times a minute, and half of all playing time is away from home - so
 // the picture re-tints about as often as the song changes part, and holds still in between.
-// (The first version followed the chroma's tonal centre: that wobbled +-15 degrees every second on
-// every track measured, which is both invisible and not a statement about the music.)
+// (Following the chroma's tonal centre instead wobbled +-15 degrees every second on every track
+// measured, which is not a statement about the music.)
 // The lean at the far side of the circle, in turns of hue, and how fast it may move per second
 const HUE_SWING = 0.26;
 const HUE_RATE = 0.05;
 
-// the lean the section playing at `t` asks for - what a preset that can see the future draws it in
+// the lean the section playing at `t` asks for - for a preset that reads ahead of the playhead
 export function keyHueAt(audio: TrackAudioData | null, t: number): number {
 	// (a track without analysis, or a harness, may carry neither sections nor track info)
 	const section = audio?.sections ? audio.sections[sectionIndexAt(audio.sections, t)] : undefined;
@@ -80,10 +80,10 @@ export function createKeyHue() {
 	};
 }
 
-// THE GLOW over a picture that is redrawn whole every frame: what is already bright, blurred at two
+// The glow over a picture that is redrawn whole every frame: what is already bright, blurred at two
 // sizes and added back - a tight core that is steady, and a wide halo whose strength is the caller's
-// to drive (it is where an event is SEEN). Both are rendered small: they are blurs, so resolution is
-// wasted on them. Never for a canvas that accumulates - that is re-blurring history (DESIGN-RULES §4).
+// to drive (it is where an event is seen). Both are rendered small: they are blurs, so resolution is
+// wasted on them. Not for a canvas that accumulates - that would re-blur its own history.
 const GLOW_CORE_DIV = 4;
 const GLOW_HALO_DIV = 12;
 

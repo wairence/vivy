@@ -4,9 +4,7 @@ What vivy reads, how far each number can be trusted, and what the code derives f
 
 There are two layers. The first is what Spotify's audio analysis contains. The second is what `src/audio-data.ts`, `src/track-structure.ts`, `src/rhythm.ts` and `createConductor()` in `src/presets/flowfield-common.ts` compute from it.
 
-Trust claims are measured on analysis dumps saved from real tracks (`analysis-dumps/`, not in the repository; a dev build saves one per track played while `npm run live` is running). Each claim names its base. 81 dumps is 67 094 segments and 35 176 beats, masters from -1.9 dB to -19.8 dB, tempi from 66 to 200 BPM. Where a smaller base is named (25 tracks, 19 dumps), the claim comes from the earlier, smaller set. Where a field has never been measured, this file says so.
-
-The source cites rules by section number, for example "DESIGN-RULES §5a". That file is not published.
+Trust claims are measured on analysis dumps saved from real tracks (`analysis-dumps/`, not in the repository; a dev build saves one per track played while the dev server, `npm run preview`, is running). Each claim names its base. 81 dumps is 67 094 segments and 35 176 beats, masters from -1.9 dB to -19.8 dB, tempi from 66 to 200 BPM. Where a smaller base is named (25 tracks, 19 dumps), the claim comes from the earlier, smaller set. Where a field has never been measured, this file says so.
 
 ## 1. Where the data comes from
 
@@ -119,7 +117,7 @@ Three nested grids, each `{ start, duration, confidence }`.
 - `confidence`: p5/p50/p95 = 0.10 / 0.59 / 1.00.
 - `time_signature` disagrees with itself on 27 of 81 tracks (sections marked 3 and 5 inside a track labelled 4/4). A track claims a median of 4 distinct keys, up to 8. These read as a low-confidence estimator changing its mind each block, not as modulations.
 - `tempo` is stable and agrees with the track (within 1 BPM across every section measured).
-- The boundaries are a timbral segmentation, not a map of song form. A boundary is not a chorus. On one reference track the choruses are at 1:06 and 2:25 and the nearest section boundaries are at 0:55 and 2:27.
+- The boundaries are a timbral segmentation, not a map of song form. A boundary is not a chorus. On one reference track the nearest section boundaries sit 11 s before one chorus and 2 s after another.
 
 ### 2.4 `track`, the summary
 
@@ -134,7 +132,7 @@ Confidences across 25 tracks (min / median / max):
 | `key_confidence` | 0.00 | 0.48 | 0.98 |
 | `mode_confidence` | 0.15 | 0.51 | 0.80 |
 
-Metre is known outright on most tracks and tempo usually is. Key and mode are about a coin flip. The first three dumps measured the opposite (tempo confidence 0.17 to 0.34), which is what three tracks buys.
+Metre is known outright on most tracks and tempo usually is. Key and mode are about a coin flip. The first three dumps measured the opposite (tempo confidence 0.17 to 0.34): three tracks is too few.
 
 `start_of_fade_out`: 77 of 81 tracks report a real fade, median 6.8 s long (p5/p95 = 2.7 / 14.4 s). The other four set it equal to the duration. Nothing reads it.
 
@@ -183,7 +181,7 @@ Read by the live code: `Hit.bands` of the hit nearest a segment start, as `bread
 | `hits` | decoded `rhythmstring` hits (section 2.5) |
 | `trackInfo` | `track`, verbatim |
 
-`loudnessCurve` and `normaliseCurve`. Points are taken at each segment's start (`loudness_start`) and at its peak (`loudness_max`, at `loudness_max_time`), converted from dB to amplitude, plus the last segment's `loudness_end`. The curve is then stretched so the track's 5th and 95th percentiles land on 0.06 and 0.62 (`ENERGY_QUIET`, `ENERGY_LOUD`) and blended 70/30 with the raw value. A track mastered at -13 dB used to sit at 0.22 for its whole length. Percentiles rather than min and max, because one silent outro would otherwise define the scale. Only 70%, because full normalisation makes a gentle song move like a loud one. `normaliseCurve` is exported so the harnesses apply the same stretch. Trust: high.
+`loudnessCurve` and `normaliseCurve`. Points are taken at each segment's start (`loudness_start`) and at its peak (`loudness_max`, at `loudness_max_time`), converted from dB to amplitude, plus the last segment's `loudness_end`. The curve is then stretched so the track's 5th and 95th percentiles land on 0.06 and 0.62 (`ENERGY_QUIET`, `ENERGY_LOUD`) and blended 70/30 with the raw value. A track mastered at -13 dB would sit at 0.22 for its whole length. Percentiles rather than min and max, because one silent outro would otherwise define the scale. Only 70%, because full normalisation makes a gentle song move like a loud one. `normaliseCurve` is exported so the harnesses apply the same stretch. Trust: high.
 
 `hitScale`. The track's 98th percentile of segment amplitude (`10^(loudness_max/20)`), at least 0.02, 0.56 when there are fewer than 8 segments. Everything that asks "was that a big hit" divides by it. It replaced `min(1, amplitude * 1.8)`: measured across the dumps, 0% to 97% of a track's segments (median track about 57%) sit above that clamp, so in a chorus every hit compared equal and a "beat the loudest recent hit" test fired every 1.3 s on the busiest track. With the per-track scale the same test gave 1 to 4 a minute.
 
@@ -191,8 +189,8 @@ Read by the live code: `Hit.bands` of the hit nearest a segment start, as `bread
 
 - Candidate score every 0.25 s from 8 s on: mean of the curve over 0.4..3 s after, against 0.4..4 s before, divided by `max(before, median * 0.4)`. The floor stops the track's own start from winning.
 - Greedy, largest first, at least 14 s apart, at most 5, each at least 40% of the track's best and at least 0.22 (about 1.7 dB).
-- Each pick is moved to the steepest point of the one-second-mean curve within 1 s before to 3 s after it, because the scoring window peaks up to 3 s early. Moving it onto the section boundary was tried and made the drop land late. It then snaps onto a bar line within 0.5 s.
-- `size` is how much of the rise is still there ten seconds later: `(mean(t+4..t+10) - before) / max(before, median * 0.4)`, clamped 0..1. Against a fixed reference: a hold of 1 (the music settles at twice what it rose from) is full size. Over 84 dumps the biggest sustained rise a track has spans 0.23 to 3.65 of the level it came from (p05 0.39, median 1.01, p95 2.55). Dividing by the track's own best had given every track one full-size moment however flat it was. A momentary spike and a step scored the same under the old `rise` score; the hold separates them.
+- Each pick is moved to the steepest point of the one-second-mean curve within 1 s before to 3 s after it, because the scoring window peaks up to 3 s early. Moving it onto the section boundary makes the drop land late. It then snaps onto a bar line within 0.5 s.
+- `size` is how much of the rise is still there ten seconds later: `(mean(t+4..t+10) - before) / max(before, median * 0.4)`, clamped 0..1. Against a fixed reference: a hold of 1 (the music settles at twice what it rose from) is full size. Over 84 dumps the biggest sustained rise a track has spans 0.23 to 3.65 of the level it came from (p05 0.39, median 1.01, p95 2.55). Dividing by the track's own best would give every track one full-size moment however flat it was. A momentary spike and a step score the same under the `rise` score alone; the hold separates them.
 - `leadSeconds`, `dip`, `build` (`describeLeadIn`): what the music does on the way in, from a one-second mean of the curve (the raw curve is a per-segment sawtooth, see below). Baseline is taken 9 to 16 s before. The run-in is the stretch before the moment that is more than 14% off baseline, and only a return to baseline lasting one beat of this track ends it. `leadSeconds` is clamped to 1.2..8 s. Over 345 moments, allowing that one-beat gap moved the share at the 1.2 s clamp from 49% to 30% and the median lead from 1.25 s to 2.75 s. Moments at exactly 8 s mean "longer than the window", not a measurement.
 
 Does it survive a modern master? Measured over 81 tracks by how hot the master is:
@@ -205,15 +203,15 @@ Does it survive a modern master? Measured over 81 tracks by how hot the master i
 | quieter than -8 dB | 10 | 1 / 5 / 5 | 0 | 14.7 dB | 15.1 dB |
 | all | 81 | 2 / 4 / 5 | 0 | 13.8 dB | 12.6 dB |
 
-Compression flattens the average level, not the moment-to-moment range. Where the listener marked drops by ear, the detector landed within a second on the tracks checked; two tracks put a moment at 0:08 to 0:12, tracks that start quiet and kick in.
+Compression flattens the average level, not the moment-to-moment range. Where drops were marked by ear, the detector landed within a second on the tracks checked; two tracks that start quiet and kick in put a moment in their first seconds.
 
-Disabled: the chorus-by-repetition detector in the same file (`ENABLED = false`). It builds per-bar chroma and timbre vectors, mean-centres them, finds boundaries with a checkerboard novelty kernel (Foote), groups the blocks and picks the group that repeats while loud and bright. On the listener's ear it was wrong more often than right, and on one track a chorus felt right where it stayed silent. One track's labels had been the times the visualiser fired, so its 3/3 was the detector scored against its own output. It still runs under `npm run structure`, which reads `structure-labels.json` (not published).
+Disabled: the chorus-by-repetition detector in the same file (`ENABLED = false`). It builds per-bar chroma and timbre vectors, mean-centres them, finds boundaries with a checkerboard novelty kernel (Foote), groups the blocks and picks the group that repeats while loud and bright. Judged by ear it was wrong more often than right, and on one track a chorus felt right where it stayed silent. One track's labels were the times the visualiser fired, so its 3/3 was the detector scored against its own output. The code stays in the file, switched off.
 
 ### 3.2 Colour
 
-`albumHsl` (flowfield-common.ts) takes the cover colour from `Spicetify.extractColorPreset` (`colorLight`, first entry) and pulls saturation into 0.45..0.95 and lightness into 0.45..0.66, so a near-grey or near-black cover does not collapse the palette. `app.tsx` eases the displayed colour towards a new cover's with a 0.6 s time constant.
+The cover's colours come from `Spicetify.colorExtractor` (dark, vibrant and light; `extractColorPreset` is the fallback) and are shaped into palettes in `colours.ts` (see ARCHITECTURE.md, Colours). `albumHsl` in flowfield-common.ts, which pulls saturation into 0.45..0.95 and lightness into 0.45..0.66, is not used by the current presets. `app.tsx` eases the displayed colour towards a new cover's with a 0.6 s time constant.
 
-`keyHueAt` (effects.ts) leans the hue off the album's by how far the playing section's `key` sits from the track's home key (`trackInfo.key`) on the circle of fifths. The home key gives no lean; the far side of the circle gives `HUE_SWING` = 0.26 turns; the square root makes the nearest key already visible. `createKeyHue` moves at most `HUE_RATE` = 0.05 turns per second. Measured over 105 tracks, a section's key differs from the previous one 1.6 times a minute and half of playing time is away from the home key. A first version followed the chroma's tonal centre, which wobbled +-15 degrees every second on every track measured. Per-section key is a low-confidence estimate (section 2.3).
+`keyHueAt` (effects.ts) leans the hue off the album's by how far the playing section's `key` sits from the track's home key (`trackInfo.key`) on the circle of fifths. The home key gives no lean; the far side of the circle gives `HUE_SWING` = 0.26 turns; the square root makes the nearest key already visible. `createKeyHue` moves at most `HUE_RATE` = 0.05 turns per second. Measured over 105 tracks, a section's key differs from the previous one 1.6 times a minute and half of playing time is away from the home key. Following the chroma's tonal centre instead wobbled +-15 degrees every second on every track measured. Per-section key is a low-confidence estimate (section 2.3).
 
 ### 3.3 Signals from the Conductor that the live code reads
 
@@ -225,7 +223,7 @@ Disabled: the chorus-by-repetition detector in the same file (`ENABLED = false`)
 | `scale` | `min(width, height)` | none | the unit for sizes that must hold at any resolution |
 | `energy` | `sampleCurve(loudnessCurve, t)` | none | normalised loudness now. It is not a level: it is an attack-decay ramp per segment and reverses direction 3.8 times a second (over 89 dumps), and any half second of it spans 2.0x. Use for brightness and width, never for a speed. With no analysis: a sine while playing, 0.5 paused. See "between tracks" below |
 | `loudness` | mean of seven samples spread over +-0.75 beat (1.5 beats wide) centred on the playhead | none, no lag by construction | the loudness without the sawtooth. Anything that sets a speed reads this. A follower was late by its own time constant (the field accelerated up to 2.9 s after a drop); the analysis is a timeline, so a centred window removes the delay. Verse-to-chorus speed measures 1.68x with either |
-| `impact` | `moments` | a function of `timeToImpact`, not a filter | the release at a moment: rises over 0.7 s INTO the moment so its peak lands on it (smoothstep, times size), falls over 1.8 s after (power 1.6). The moment is evaluated 0.12 s ahead of the clock. Scaled by the moment's size |
+| `impact` | `moments` | a function of `timeToImpact`, not a filter | the release at a moment: rises over 0.7 s into the moment so its peak lands on it (smoothstep, times size), falls over 1.8 s after (power 1.6). The moment is evaluated 0.12 s ahead of the clock. Scaled by the moment's size |
 | `timeToImpact` | `moments` | none | seconds to the next moment within 25 s, else `null`. The only signal that looks forward |
 | `anticipation` | `timeToImpact` | ↑3 ↓9 | 0..1, rising over the moment's own `leadSeconds` (power 1.6, times size), released at it |
 | `windup` | `timeToImpact`, `leadSeconds`, size | none | acceleration before the moment: spans `leadSeconds` clamped 1.2..7 s, power 1.25, peaks at the moment, then holds and releases over 1.9 s. Gated by how loud the approach has been (see below) |
@@ -234,11 +232,11 @@ Disabled: the chorus-by-repetition detector in the same file (`ENABLED = false`)
 | `brightness` | `max(0, timbre[1] / 100)`, clamped | 0.8 | spectral brightness of the current segment, 0..1 |
 | `attackSharpness` | `1 - loudness_max_time / 0.25`, clamped | 6 | how abrupt the current segment is. Updates on segment change. Texture only (section 2.1) |
 
-`windup` is gated because it used to read only the destination. Over 311 run-ins the correlation between the energy during a run-in and the speed it reached was r = -0.30: a moment is big because the stretch before it was quiet, so size correlates with silence and the field sprinted through quiet passages. The gate is `min(1, approachEnergy / max(0.08, curveMedian * 0.75))`, where `approachEnergy` is a 2 s follower of `energy` and `curveMedian` the track's median curve value, so "quiet" is relative to the track.
+`windup` is gated because a wind-up that reads only the destination comes out inverted. Over 311 run-ins the correlation between the energy during a run-in and the speed it reached was r = -0.30: a moment is big because the stretch before it was quiet, so size correlates with silence and the field sprinted through quiet passages. The gate is `min(1, approachEnergy / max(0.08, curveMedian * 0.75))`, where `approachEnergy` is a 2 s follower of `energy` and `curveMedian` the track's median curve value, so "quiet" is relative to the track.
 
 `harmonicShift` is not "the tonal centre moved". In the second after a spike the tonal centre moves no further than in a quiet second before it (0.154 of the ring against 0.178 on one track, 0.102 against 0.121 on another). It says the spectrum of the harmony changed, which a change of level or timbral balance moves as readily as a chord. The angle of a weak resultant over chroma is noise (it covered the entire ring over one song and moved a quarter of it in a second), so no tonal-centre angle is used.
 
-Between tracks (`GAP_REST` 0.12, `GAP_HOLD` 3 s, `JOIN_SECONDS` 1.5). While the next analysis loads, `energy` and `loudness` breathe out towards 0.12 instead of following the fallback sine. Only a track still without analysis after 3 s gets the sine. When an analysis arrives, the level comes round to the new track's own over 1.5 s (smoothstep) from wherever it was. Assigned directly it had fallen 0.56 to 0.10 in one frame, dividing every speed in the picture by four. `npm run check` asserts the level neither climbs while waiting nor steps by 0.02 or more in one frame.
+Between tracks (`GAP_REST` 0.12, `GAP_HOLD` 3 s, `JOIN_SECONDS` 1.5). While the next analysis loads, `energy` and `loudness` breathe out towards 0.12 instead of following the fallback sine. Only a track still without analysis after 3 s gets the sine. When an analysis arrives, the level comes round to the new track's own over 1.5 s (smoothstep) from wherever it was. Assigned directly, the level falls from 0.56 to 0.10 in one frame, dividing every speed in the picture by four. `npm run check` asserts the level neither climbs while waiting nor steps by 0.02 or more in one frame.
 
 ### 3.4 NextSound (next-sound.ts)
 
@@ -256,13 +254,13 @@ Between tracks (`GAP_REST` 0.12, `GAP_HOLD` 3 s, `JOIN_SECONDS` 1.5). While the 
 | `breadth` | `(bands - 3) / 5` of the rhythm hit within 0.07 s of the segment start, else 0 |
 | `standout` | `amp` above 1.1 times a running average of recent sounds (updated by 0.2 of the difference at each sound, and judged before the sound joins it) |
 
-`standout` was previously measured against a decaying peak (4.6 s half-life) and 71 to 92% of hits cleared it. Against a running average of recent hits 2 to 34% do, and a compressed track getting almost none is correct.
+`standout` against a decaying peak (4.6 s half-life) would be cleared by 71 to 92% of hits. Against a running average of recent hits 2 to 34% do, and a compressed track getting almost none is correct.
 
 ### 3.5 Computed, not read by either live preset
 
-The conductor also computes `momentum`, `glow`, `pop`, `beatStrength`, `beatHit`, `segment`, `strike`, `lookAhead`, `sectionIntensity`, `trend`, `level`, `wander`, `speedFader`, `yAttraction`, the cursor signals (`gust*`, `chaos`, `order`, `baton`, `hand`, `trailAt`, `rippleAt`, `clicked`, `rightClicked`) and the `chaosTotal`/`orderTotal` pair. Each is described in a comment on the `Conductor` type in `flowfield-common.ts`. `app.tsx` reads `lastConducted` (every numeric field) only to write the dev-build marker, and `reportGrid` reports bar and section statistics in dev builds.
+The conductor also computes `momentum`, `glow`, `pop`, `beatStrength`, `beatHit`, `segment`, `strike`, `lookAhead`, `sectionIntensity`, `trend` and `level`. Each is described in a comment on the `Conductor` type in `flowfield-common.ts`. `app.tsx` reads `lastConducted` (every numeric field) only to write the dev-build marker, and `reportGrid` reports bar and section statistics in dev builds.
 
-`strike` is a segment start that has a rhythm hit within 60 ms, with strength from the band count (0.6 for 3 bands up to 1 for 8). Without a `rhythmstring` it falls back to a sharp, prominent segment. Fired directly off the onsets rather than on the segment clock it was a better detector and a worse picture: the light landed on the beat 24% of the time against 41%, because everything else runs on the segment clock and two event streams smear each other.
+`strike` is a segment start that has a rhythm hit within 60 ms, with strength from the band count (0.6 for 3 bands up to 1 for 8). Without a `rhythmstring` it falls back to a sharp, prominent segment. Fired directly off the onsets rather than on the segment clock it is a better detector and a worse picture: the light landed on the beat 24% of the time against 41%, because everything else runs on the segment clock and two event streams smear each other.
 
 ## 4. Tried and rejected
 

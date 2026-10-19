@@ -1,6 +1,6 @@
 {
   "name": "vivy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "repository": "github:wairence/vivy",
   "scripts": {
@@ -10,13 +10,8 @@
     "release": "node stamp.js --release && spicetify-creator --out=dist --minify && node release-notice.js && node stamp.js",
     "typecheck": "node stamp.js && tsc --noEmit",
     "check": "node check-presets.js",
-    "structure": "node structure-lab.js",
-    "rhythm": "node rhythm-lab.js",
-    "compression": "node compression-lab.js",
     "preview:build": "esbuild preview-harness.ts --bundle --outfile=preview-harness.bundle.js --format=iife --target=chrome110",
     "preview": "npm run preview:build && node perf-serve.js",
-    "live:build": "esbuild live-app.ts --bundle --outfile=live-app.bundle.js --format=iife --target=chrome110",
-    "live": "npm run live:build && node perf-serve.js",
     "stamp": "node stamp.js"
   },
   "license": "MIT",

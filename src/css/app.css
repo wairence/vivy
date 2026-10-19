@@ -139,6 +139,18 @@
 	height: 18px;
 }
 
+.vivy-icon.small {
+	width: 28px;
+	height: 28px;
+	background: rgba(255, 255, 255, 0.06);
+	backdrop-filter: none;
+}
+
+.vivy-icon.small svg {
+	width: 14px;
+	height: 14px;
+}
+
 .vivy-icon:hover {
 	color: #ffffff;
 	background: rgba(255, 255, 255, 0.14);
@@ -183,6 +195,40 @@
 	border-radius: 999px;
 	background: rgba(255, 255, 255, 0.2);
 	overflow: hidden;
+}
+
+/* fullscreen: the bar seeks, with a taller hit area than it looks */
+.vivy-progress-track.seek {
+	position: relative;
+	width: min(560px, 70vw);
+	overflow: visible;
+	cursor: pointer;
+	pointer-events: auto;
+	touch-action: none;
+	transition: height 0.15s ease;
+}
+
+.vivy-progress-track.seek::before {
+	content: "";
+	position: absolute;
+	inset: -10px 0;
+}
+
+.vivy-progress-track.seek:hover,
+.vivy-progress-track.seek.held {
+	height: 6px;
+}
+
+.vivy-controls {
+	display: flex;
+	gap: 10px;
+	margin-top: 14px;
+	pointer-events: auto;
+}
+
+.vivy-idle .vivy-progress-track.seek,
+.vivy-idle .vivy-controls {
+	pointer-events: none;
 }
 
 .vivy-progress-fill {
@@ -232,16 +278,6 @@
 	font-size: 13px;
 }
 
-.vivy-tune-head button {
-	font: inherit;
-	color: inherit;
-	background: rgba(255, 255, 255, 0.1);
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	border-radius: 999px;
-	padding: 3px 10px;
-	cursor: pointer;
-}
-
 .vivy-tune-group {
 	margin: 12px 0 4px;
 	font-size: 11px;
@@ -278,11 +314,301 @@
 	accent-color: var(--vivy-accent);
 }
 
+/* a thin rail with a round handle instead of the browser's thick default */
 .vivy-tune-knob input {
 	width: 100%;
+	height: 14px;
 	margin: 2px 0 0;
+	appearance: none;
+	background: transparent;
+	cursor: pointer;
+}
+
+.vivy-tune-knob input::-webkit-slider-runnable-track {
+	height: 3px;
+	border-radius: 2px;
+	background: rgba(255, 255, 255, 0.16);
+}
+
+.vivy-tune-knob input::-webkit-slider-thumb {
+	appearance: none;
+	width: 12px;
+	height: 12px;
+	margin-top: -4.5px;
+	border-radius: 50%;
+	background: var(--vivy-accent);
+	transition: transform 0.12s;
+}
+
+.vivy-tune-knob input:hover::-webkit-slider-thumb,
+.vivy-tune-knob input:focus-visible::-webkit-slider-thumb {
+	transform: scale(1.25);
+}
+
+.vivy-tune-knob.moved input::-webkit-slider-thumb {
+	background: #ffd479;
+}
+
+/* the panel's own scrollbar: thin, and only as visible as it needs to be */
+/* the panel's own scrollbar is hidden (Spotify's styling of it wins over ours); a hairline drawn beside
+   it, .vivy-tune-bar, shows where you are */
+.vivy-tune {
+	scrollbar-width: none !important;
+}
+
+.vivy-tune::-webkit-scrollbar {
+	display: none !important;
+	width: 0 !important;
+}
+
+.vivy-tune-bar {
+	position: absolute;
+	z-index: 4;
+	width: 2px;
+	border-radius: 1px;
+	background: rgba(255, 255, 255, 0.16);
+	pointer-events: none;
+}
+
+/* what the knob under the pointer does, beside the panel */
+.vivy-tune-hint {
+	position: absolute;
+	z-index: 4;
+	width: 240px;
+	padding: 9px 12px;
+	font-size: 12px;
+	line-height: 1.45;
+	color: rgba(255, 255, 255, 0.9);
+	background: rgba(14, 16, 18, 0.92);
+	border: 1px solid var(--vivy-accent-edge);
+	border-radius: 10px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	pointer-events: none;
+	animation: vivy-hint-in 0.14s ease-out;
+}
+
+.vivy-tune-hint small {
+	display: block;
+	margin-top: 5px;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes vivy-hint-in {
+	from {
+		opacity: 0;
+		transform: translateX(4px);
+	}
 }
 
 .vivy-tune-none {
 	color: rgba(255, 255, 255, 0.5);
+}
+
+/* the colours, at the top of the knobs panel */
+.vivy-seg {
+	display: flex;
+	gap: 2px;
+	padding: 2px;
+	margin: 2px 0 8px;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.06);
+}
+
+.vivy-seg button {
+	flex: 1;
+	padding: 4px 0;
+	font: inherit;
+	color: rgba(255, 255, 255, 0.65);
+	background: transparent;
+	border: 0;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.vivy-seg button:hover {
+	color: #fff;
+}
+
+.vivy-seg button.on {
+	color: var(--vivy-accent);
+	background: var(--vivy-accent-tint);
+	box-shadow: inset 0 0 0 1px var(--vivy-accent-edge);
+}
+
+.vivy-tune-sub {
+	margin: 2px 0 2px;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.45);
+}
+
+.vivy-swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+	margin: 0 0 8px;
+}
+
+.vivy-swatch {
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	font: inherit;
+	font-size: 15px;
+	line-height: 1;
+	color: rgba(255, 255, 255, 0.6);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 7px;
+	cursor: pointer;
+	transition: transform 0.12s;
+}
+
+.vivy-swatch:hover {
+	transform: scale(1.08);
+}
+
+.vivy-swatch.on {
+	box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--vivy-accent);
+}
+
+.vivy-swatch.add {
+	background: transparent;
+	border-style: dashed;
+}
+
+.vivy-ramp {
+	flex-basis: 100%;
+	height: 6px;
+	border-radius: 3px;
+}
+
+/* the colour picker, beside the panel */
+.vivy-picker {
+	position: absolute;
+	z-index: 4;
+	width: 244px;
+	padding: 10px;
+	background: rgba(14, 16, 18, 0.95);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 12px;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+	animation: vivy-hint-in 0.14s ease-out;
+}
+
+.vivy-picker-square {
+	position: relative;
+	height: 140px;
+	border-radius: 8px;
+	background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
+	cursor: crosshair;
+	touch-action: none;
+}
+
+.vivy-picker-dot {
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	margin: -7px 0 0 -7px;
+	border: 2px solid #fff;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+	pointer-events: none;
+}
+
+.vivy-picker-strip {
+	position: relative;
+	height: 12px;
+	margin: 10px 0;
+	border-radius: 6px;
+	background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+	cursor: pointer;
+	touch-action: none;
+}
+
+.vivy-picker-handle {
+	position: absolute;
+	top: 50%;
+	width: 14px;
+	height: 14px;
+	margin: -7px 0 0 -7px;
+	border: 2px solid #fff;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+	pointer-events: none;
+}
+
+.vivy-picker-row {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.vivy-picker-chip {
+	flex: none;
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.vivy-picker-row input {
+	min-width: 0;
+	flex: 1;
+	padding: 4px 6px;
+	font: inherit;
+	font-family: ui-monospace, monospace;
+	color: #fff;
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 6px;
+	outline: none;
+}
+
+.vivy-picker-row input:focus {
+	border-color: var(--vivy-accent-edge);
+}
+
+.vivy-picker-row button {
+	flex: none;
+	padding: 4px 8px;
+	font: inherit;
+	color: inherit;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 999px;
+	cursor: pointer;
+}
+
+/* "More settings": opens the rest of the preset's knobs and its effect switches */
+.vivy-more {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	margin: 12px 0 2px;
+	padding: 6px 0;
+	font: inherit;
+	color: rgba(255, 255, 255, 0.6);
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 8px;
+	cursor: pointer;
+	transition:
+		color 0.2s ease,
+		background 0.2s ease;
+}
+
+.vivy-more:hover {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.1);
+}
+
+.vivy-more svg {
+	transition: transform 0.2s ease;
+}
+
+.vivy-more.on svg {
+	transform: rotate(180deg);
 }

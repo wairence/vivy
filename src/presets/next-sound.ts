@@ -1,17 +1,17 @@
-// THE SOUND THAT IS ABOUT TO HAPPEN, and everything the analysis knows about it.
+// The sound that is about to happen, and everything the analysis knows about it.
 //
-// Not the one happening: the one about to. A mark peaks some time after it is lit and the eye reads
-// an event at its peak (DESIGN-RULES §5b); the analysis is a timeline, so the next segment is
-// already in memory with its loudness, its attack and how far it falls. Every preset that puts one
-// mark on screen per sound reads it from here, so they all answer the same sounds the same way.
+// Not the one happening: the one about to. A mark peaks some time after it is lit and an event is
+// read at its peak, so the response has to start early; the analysis is a timeline, so the next
+// segment is already in memory with its loudness, its attack and how far it falls. Every preset that
+// puts one mark on screen per sound reads it from here, so they all answer the same sounds the same way.
 import { rankOf, TrackAudioData } from "../audio-data";
 
 export type NextSound = {
-	// true on exactly one frame per sound, `lead` seconds BEFORE it, so a response that needs that
+	// true on exactly one frame per sound, `lead` seconds before it, so a response that needs that
 	// long to reach full strength lands on the sound
 	fired: boolean;
 	// its amplitude over what a big hit is on THIS track - unclamped, a per-track scale and never a
-	// constant: loudness is a property of the mastering (DESIGN-RULES §3c)
+	// constant: loudness is a property of the mastering
 	amp: number;
 	// dull against ringing, ranked within the track (timbre[1]) - the nearest honest thing to a register
 	ringing: number;
@@ -86,7 +86,7 @@ export function createNextSound() {
 		}
 		const lead = Math.min(0.4, rise * 0.9);
 
-		// judged against the average BEFORE this sound joins it
+		// judged against the average before this sound joins it
 		const standout = average > 1e-3 && amp > average * STANDOUT_OVER;
 		const fired = coming !== null && coming.start !== lastStart && coming.start - progressSec <= lead;
 		if (fired && coming) {

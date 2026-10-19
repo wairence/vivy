@@ -31,10 +31,10 @@ export class AudioSync {
 	}
 }
 
-// THE PLAYER'S CLOCK IS WHOLE MILLISECONDS. Measured in the client on 2026-10-01: frames arrive every
-// 4.2 ms (a 240 Hz screen) and the track's position steps 4, 4, 4, 5 ms - so a preset that moves by
+// The player's clock is whole milliseconds. Measured in the client: frames arrive every 4.2 ms
+// (a 240 Hz screen) and the track's position steps 4, 4, 4, 5 ms - so a preset that moves by
 // `position - lastPosition` moves 20% further on one frame in six than on the others. Under an
-// accumulating trail nobody can see that; under a camera that redraws the scene every frame it is a
+// accumulating trail that is invisible; under a camera that redraws the scene every frame it is a
 // shiver in everything at once.
 //
 // So the position a preset is handed is the wall clock's, slewed gently onto the player's: it advances

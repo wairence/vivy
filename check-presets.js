@@ -1,7 +1,7 @@
-// Headless sanity check for the presets: there is no way to look at this thing while developing it
-// (it only runs inside the Spotify client), so instead every preset is driven for a few hundred
-// frames against a fake canvas that asserts the numbers it is handed are sane, and that a paused
-// frame renders exactly the same calls as the frame before it. Run with `npm run check`.
+// Headless sanity check for the presets, which otherwise only run inside the Spotify client: every
+// preset is driven for a few hundred frames against a fake canvas that asserts the numbers it is
+// handed are sane, and that a paused frame renders exactly the same calls as the frame before it.
+// Run with `npm run check`.
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
@@ -16,6 +16,7 @@ execFileSync(
 	[
 		path.join(__dirname, "node_modules", "typescript", "bin", "tsc"),
 		"src/presets/index.ts",
+		"src/colours.ts",
 		"src/audio-sync.ts",
 		"src/types/audio-analysis.d.ts",
 		"src/types/spicetify.d.ts",
@@ -58,13 +59,13 @@ function checkStyle(op, value) {
 	return value;
 }
 
-// A pixel buffer, as one number. Without this an ImageData logged as `[object Object]`, so for a
-// preset that draws by `putImageData` NEITHER of this harness's two jobs was being done: no number
-// inside it was ever checked, and the freeze-on-pause test compared two identical strings while the
-// pixels underneath were free to change. FNV-1a over the bytes, which is enough to notice one
-// changed pixel and costs nothing.
+// A pixel buffer, as one number. Otherwise an ImageData logs as `[object Object]`, so for a preset
+// that draws by `putImageData` neither of this harness's two jobs would be done: no number inside
+// it would be checked, and the freeze-on-pause test would compare two identical strings while the
+// pixels underneath were free to change. FNV-1a over the bytes: enough to notice one changed pixel,
+// and cheap.
 //
-// It cannot catch a NaN, and that is worth stating: a Uint8ClampedArray silently turns NaN into 0,
+// It cannot catch a NaN: a Uint8ClampedArray silently turns NaN into 0,
 // so by the time a value reaches an ImageData the evidence is gone. That is what `publishDiagnostics`
 // in flowfield-common is for - a preset with a simulation behind it reports the state of the
 // simulation itself, and the assert below covers it.
@@ -187,8 +188,8 @@ global.Path2D = class {
 global.document = {
 	createElement: () => ({ width: 0, height: 0, getContext: () => createContext() })
 };
-// just enough for butterchurn's UMD wrapper to `require()` without crashing in plain Node - actually
-// using it (new AudioContext(), real WebGL) still throws inside draw(), caught below and skipped
+// just enough for a module that looks for a `window` to load in plain Node - actually using the
+// browser (new AudioContext(), real WebGL) still throws inside draw(), caught below and skipped
 global.window = global;
 
 function fakeAudio(seed) {
@@ -253,54 +254,43 @@ for (const audio of [fakeAudio(7), null]) {
 		checking = true;
 
 		let progressSec = 3;
-		const frameAt = (t, isPlaying, mouseFrame) => ({
+		const frameAt = (t, isPlaying) => ({
 			ctx,
 			width: WIDTH,
 			height: HEIGHT,
 			progressSec: t,
 			isPlaying,
 			audio,
-			colorRgb: { r: 30.5, g: 215.2, b: 96.8 },
-			mouse: {
-				x: WIDTH * (0.5 + Math.sin(mouseFrame * 0.11) * 0.45),
-				y: HEIGHT * (0.5 + Math.cos(mouseFrame * 0.07) * 0.45),
-				speed: mouseFrame % 90 < 45 ? 0 : 5 + (mouseFrame % 45),
-				clicks: Math.floor(mouseFrame / 37),
-				rightClicks: Math.floor(mouseFrame / 53),
-				down: mouseFrame % 37 < 10,
-				rightDown: mouseFrame % 53 < 8,
-				scroll: 0.5 + Math.sin(mouseFrame * 0.05) * 0.5,
-				particleScale: 0.5 + Math.sin(mouseFrame * 0.03) * 0.5
-			}
+			colorRgb: { r: 30.5, g: 215.2, b: 96.8 }
 		});
 
 		try {
 			for (let f = 0; f < 400; f++) {
 				progressSec += 1 / 60;
-				preset.draw(frameAt(progressSec, true, f));
+				preset.draw(frameAt(progressSec, true));
 				checkDiagnostics(`${label} frame ${f}`);
 			}
 
 			// seeking backwards must not produce a negative dt anywhere
-			preset.draw(frameAt(progressSec - 40, true, 0));
-			preset.draw(frameAt(progressSec - 40 + 1 / 60, true, 1));
+			preset.draw(frameAt(progressSec - 40, true));
+			preset.draw(frameAt(progressSec - 40 + 1 / 60, true));
 
-			// paused, cursor held still: consecutive frames must be byte-identical, otherwise the
+			// paused: consecutive frames must be byte-identical, otherwise the
 			// preset keeps animating (or fading its own trails away) while the music is stopped
-			preset.draw(frameAt(progressSec, false, 12));
+			preset.draw(frameAt(progressSec, false));
 			log = [];
-			preset.draw(frameAt(progressSec, false, 12));
+			preset.draw(frameAt(progressSec, false));
 			const first = log.join("\n");
 			log = [];
-			preset.draw(frameAt(progressSec, false, 12));
+			preset.draw(frameAt(progressSec, false));
 			assert.strictEqual(log.join("\n"), first, `${label}: kept animating while paused`);
 
 			checking = false;
 			console.log(`ok  ${label}${first.length === 0 ? " (frozen, no draw calls)" : ""}`);
 		} catch (e) {
 			checking = false;
-			// presets that need a real browser (AudioContext/WebGL2 - e.g. the Butterchurn-based one)
-			// can't run in plain Node - skip rather than fail, they're only verifiable via `npm run preview`
+			// a preset that needs a real browser (AudioContext) can't run in plain Node - skip rather
+			// than fail; it is only verifiable via `npm run preview`
 			if (e instanceof ReferenceError && /AudioContext/.test(e.message)) {
 				console.log(`skip ${label}: needs a real browser (${e.message}) - verify with npm run preview`);
 			} else {
@@ -324,7 +314,7 @@ for (const audio of [fakeAudio(7), null]) {
 			label = `${definition.id}/knobs at ${end}`;
 			checking = true;
 			for (let f = 0; f < 200; f++) {
-				preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: { r: 30, g: 215, b: 96 }, mouse: { x: 0, y: 0, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 } });
+				preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: { r: 30, g: 215, b: 96 } });
 				checkDiagnostics(`${label} frame ${f}`);
 			}
 			checking = false;
@@ -334,14 +324,59 @@ for (const audio of [fakeAudio(7), null]) {
 	}
 }
 
+// The colours: every source with every gradient, from a dark, a grey and a light cover palette and
+// from picked colours (pure black and white among them). No combination may draw a NaN.
+{
+	const colours = require(path.join(OUT, "colours.js"));
+	const palette = [{ r: 12, g: 20, b: 60 }, { r: 128, g: 128, b: 128 }, { r: 250, g: 240, b: 200 }];
+	for (const definition of PRESETS) {
+		let n = 0;
+		const own = colours.coloursOf(definition.id);
+		for (const mode of ["cover", "custom"])
+			for (const [follows] of own ? own.gradients : [["none"]]) {
+				colours.setColours(definition.id, { mode, follows, stops: ["#000000", "#ff2a6d", "#ffffff"], harmony: 0.5 });
+				const preset = definition.create();
+				const ctx = createContext();
+				label = `${definition.id}/colours ${mode} ${follows}`;
+				checking = true;
+				for (let f = 0; f < 120; f++) {
+					preset.draw({ ctx, width: WIDTH, height: HEIGHT, progressSec: 3 + f / 60, isPlaying: true, audio: fakeAudio(7), colorRgb: palette[1], palette, coverColours: [...palette, { r: 200, g: 40, b: 40 }, { r: 90, g: 90, b: 100 }, { r: 40, g: 180, b: 90 }] });
+					checkDiagnostics(`${label} frame ${f}`);
+				}
+				checking = false;
+				n++;
+			}
+		console.log(`ok  ${definition.id} colours (${n} combinations)`);
+	}
+	for (const definition of PRESETS) {
+		const own = colours.coloursOf(definition.id);
+		if (own) colours.setColours(definition.id, { mode: "cover", follows: own.gradients[0][0], stops: ["#1e3a8a", "#5de6f0"], harmony: 1 });
+	}
+}
+
+// The cover's colours by area: a speck of red on a blue cover is not a second colour, two big areas are
+{
+	const { coverHues } = require(path.join(OUT, "colours.js"));
+	const cover = parts => {
+		const px = new Uint8ClampedArray(48 * 48 * 4);
+		let i = 0;
+		for (const [share, rgb] of parts)
+			for (let n = Math.round(share * 48 * 48); n > 0 && i < px.length; n--, i += 4) px.set([...rgb, 255], i);
+		return px;
+	};
+	assert.strictEqual(coverHues(cover([[0.25, [45, 179, 235]], [0.012, [172, 0, 22]], [0.7, [20, 20, 24]]])).length, 0, "a red speck on a blue cover made a palette");
+	assert.strictEqual(coverHues(cover([[0.4, [45, 179, 235]], [0.3, [235, 140, 40]], [0.3, [10, 10, 10]]])).length, 2, "blue and orange halves were not two colours");
+	assert.strictEqual(coverHues(cover([[1, [128, 128, 128]]])).length, 0, "a grey cover made a palette");
+	console.log("ok  cover colours by area (a speck is not a colour, two halves are two)");
+}
+
 for (const warning of warnings) console.log(`warn  ${warning}`);
 // Between tracks: the analysis goes away, the clock goes back to zero, and a different song arrives at a
 // different level. The conductor's level may not climb while it waits and may not step when it joins.
 {
 	const { createConductor } = require(path.join(OUT, "presets", "flowfield-common.js"));
 	const conduct = createConductor();
-	const mouse = { x: 400, y: 300, speed: 0, clicks: 0, rightClicks: 0, down: false, rightDown: false, scroll: 0.5, particleScale: 0.5 };
-	const at = (audio, t) => conduct({ ctx: createContext(), width: WIDTH, height: HEIGHT, progressSec: t, isPlaying: true, audio, colorRgb: { r: 30, g: 215, b: 96 }, mouse });
+	const at = (audio, t) => conduct({ ctx: createContext(), width: WIDTH, height: HEIGHT, progressSec: t, isPlaying: true, audio, colorRgb: { r: 30, g: 215, b: 96 } });
 	const a = fakeAudio(7);
 	const b = fakeAudio(11);
 	let last = 0;
