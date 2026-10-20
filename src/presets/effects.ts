@@ -76,7 +76,7 @@ function fitReduced(canvas: HTMLCanvasElement, width: number, height: number, di
 export function createGlow() {
 	let core: HTMLCanvasElement | null = null;
 	let halo: HTMLCanvasElement | null = null;
-	return (ctx: CanvasRenderingContext2D, source: CanvasImageSource, width: number, height: number, scale: number, haloAlpha: number) => {
+	const glow = (ctx: CanvasRenderingContext2D, source: CanvasImageSource, width: number, height: number, scale: number, haloAlpha: number) => {
 		if (typeof document === "undefined") return;
 		core = core || document.createElement("canvas");
 		halo = halo || document.createElement("canvas");
@@ -101,4 +101,10 @@ export function createGlow() {
 		ctx.drawImage(halo, 0, 0, width, height);
 		ctx.restore();
 	};
+	// a canvas sized 0x0 gives its memory back now, not at the next garbage collection
+	const dispose = () => {
+		for (const c of [core, halo]) if (c) c.width = c.height = 0;
+		core = halo = null;
+	};
+	return Object.assign(glow, { dispose });
 }

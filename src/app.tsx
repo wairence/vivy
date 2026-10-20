@@ -39,6 +39,7 @@ export default function App() {
 
 	const choosePreset = (id: string) => {
 		if (id === presetId) return;
+		presetRef.current?.dispose();
 		presetRef.current = createPreset(id);
 		try {
 			localStorage.setItem(PRESET_STORAGE_KEY, id);
@@ -58,6 +59,13 @@ export default function App() {
 	}, []);
 
 	useEffect(announceBuild, []);
+	useEffect(
+		() => () => {
+			presetRef.current?.dispose();
+			presetRef.current = undefined;
+		},
+		[]
+	);
 
 	// P mini window, T knobs, F fullscreen, 1-9 effects on or off; in dev builds B marks the moment
 	useEffect(() => {

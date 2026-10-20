@@ -297,6 +297,7 @@ type Renderer = {
 	canvas: HTMLCanvasElement;
 	// a GPU reset, a driver update, sleep: the context goes, and everything made in it with it
 	lost: () => boolean;
+	dispose: () => void;
 	draw: (width: number, height: number, layers: { verts: Float32Array; count: number; rgb: Rgb; near: Rgb }[], heads: Float32Array, headCount: number, headRgb: Rgb, headNear: Rgb) => void;
 };
 
@@ -366,6 +367,10 @@ function createRenderer(maxParticles: number): Renderer | null {
 	return {
 		canvas,
 		lost: () => gl.isContextLost(),
+		dispose() {
+			gl.getExtension("WEBGL_lose_context")?.loseContext();
+			canvas.width = canvas.height = 0;
+		},
 		draw(width, height, layers, heads, headCount, headRgb, headNear) {
 			if (canvas.width !== width || canvas.height !== height) {
 				canvas.width = width;
@@ -411,8 +416,6 @@ function createRenderer(maxParticles: number): Renderer | null {
 	};
 }
 
-let sharedRenderer: Renderer | null | undefined;
-let rendererLost = false;
 const makeRenderer = () => {
 	try {
 		return createRenderer(Math.max(GROUND_COUNT, SHEET_COUNT, MARK_POOL));
@@ -426,9 +429,9 @@ function create(): Preset {
 	const noise = createNoise3D();
 	const conduct = createConductor();
 	const nextSound = createNextSound();
-	// one renderer per page: browsers keep only about sixteen WebGL contexts alive
-	if (sharedRenderer === undefined) sharedRenderer = makeRenderer();
-	let renderer = sharedRenderer;
+	// one context per instance, released in dispose(): a browser keeps only about sixteen alive
+	let renderer = makeRenderer();
+	let rendererLost = false;
 	let retryAt = 0;
 	if (!renderer && typeof Spicetify !== "undefined") Spicetify.showNotification("Drift needs WebGL, and this client has it switched off");
 
@@ -1067,17 +1070,13 @@ function create(): Preset {
 			publishDiagnostics("layers3d", { checksum, cameraX: Px, cameraZ: Pz, heads: headCount });
 
 			if (renderer?.lost()) {
-				renderer = sharedRenderer = null;
+				renderer = null;
 				rendererLost = true;
 			}
-			if (!renderer && rendererLost) {
-				const now = performance.now();
-				if (sharedRenderer) renderer = sharedRenderer;
-				else if (now > retryAt) {
-					retryAt = now + 2000;
-					renderer = sharedRenderer = makeRenderer();
-					if (renderer) rendererLost = false;
-				}
+			if (!renderer && rendererLost && performance.now() > retryAt) {
+				retryAt = performance.now() + 2000;
+				renderer = makeRenderer();
+				if (renderer) rendererLost = false;
 			}
 			if (!renderer) return;
 			renderer.draw(
@@ -1097,6 +1096,12 @@ function create(): Preset {
 			// ---- onto the frame, and the bloom over it -------------------------------------------------------
 			ctx.drawImage(renderer.canvas, 0, 0);
 			glow(ctx, renderer.canvas, width, height, c.scale, (0.4 + tintPulse * 0.35 + release * 0.9) * K.GLOW);
+		},
+		dispose() {
+			renderer?.dispose();
+			renderer = null;
+			rendererLost = false;
+			glow.dispose();
 		}
 	};
 }

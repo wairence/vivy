@@ -86,7 +86,7 @@ export function useFrameLoop(
 				coverColours: shown
 			};
 			try {
-				presetRef.current!.draw(frame);
+				presetRef.current?.draw(frame);
 			} catch (err) {
 				// said once; the next frame tries again
 				if (!drawFailed) console.error("[visualizer] draw failed", err);
@@ -124,6 +124,8 @@ export function useFrameLoop(
 			mini.close();
 			requestWindow.cancelAnimationFrame(requestId);
 			audioSync.dispose();
+			// frees the backing store now rather than whenever the detached canvas is collected
+			canvas.width = canvas.height = 0;
 		};
 	}, []);
 

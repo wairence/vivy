@@ -752,6 +752,11 @@ function create(): Preset {
 
 			// the halo swells with the sound itself and with a moment
 			glow(ctx, ctx.canvas, width, height, scale, (0.3 + c.energy * 0.6 + c.impact * 0.5) * K.GLOW);
+		},
+		dispose() {
+			rows.clear();
+			gates.clear();
+			glow.dispose();
 		}
 	};
 }

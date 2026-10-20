@@ -16,6 +16,8 @@ export type PresetFrame = {
 
 export type Preset = {
 	draw: (frame: PresetFrame) => void;
+	// release canvases and GPU memory: called when the preset is switched away and when the page closes
+	dispose: () => void;
 };
 
 export type PresetDefinition = {
