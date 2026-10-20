@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "./colours";
+import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "../colours";
 
 // The colours, at the top of the knobs panel: cover or picked colours, and what the gradient follows.
 // The picker opens beside the panel, because the panel's scrolling would cut it off.
