@@ -1,6 +1,4 @@
-// AudioContext.outputLatency is the real gap (seconds) between "queued for playback" and "actually
-// audible through the speakers" - Spicetify.Player.getProgress() reports the former, so anything
-// driven directly by it runs slightly ahead of what's actually heard. Compensates for it here.
+// outputLatency is the gap between queued and audible; Player.getProgress() reports the former.
 // Adapted from Konsl/spicetify-visualizer's AudioSyncManager (MIT).
 export class AudioSync {
 	private audioContext: AudioContext;
@@ -31,16 +29,8 @@ export class AudioSync {
 	}
 }
 
-// The player's clock is whole milliseconds. Measured in the client: frames arrive every 4.2 ms
-// (a 240 Hz screen) and the track's position steps 4, 4, 4, 5 ms - so a preset that moves by
-// `position - lastPosition` moves 20% further on one frame in six than on the others. Under an
-// accumulating trail that is invisible; under a camera that redraws the scene every frame it is a
-// shiver in everything at once.
-//
-// So the position a preset is handed is the wall clock's, slewed gently onto the player's: it advances
-// by real elapsed time and takes back a twentieth of its error each frame, which follows the player's
-// own rate and passes on a fortieth of its rounding. A seek, a pause or a stall is a real
-// discontinuity and is taken at once.
+// The player's clock is whole milliseconds (position steps 4, 4, 4, 5 ms at 240 Hz), so `position - last` shivers.
+// The wall clock is slewed onto the player's (a twentieth of the error per frame); a seek, pause or stall is taken at once.
 export function createSmoothClock() {
 	let position = 0;
 	let lastWall: number | null = null;

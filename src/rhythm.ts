@@ -1,38 +1,14 @@
-// `track.rhythmstring` - the only part of the analysis that describes the audio's own onsets rather
-// than a grid fitted over them. zlib-deflated, URL-safe base64, and it decodes to plain text:
-//
-//     sampleRate hopSize bandCount  (count delta delta delta ...) x bandCount
-//
-// Each band is a list of frame-index deltas, so a running sum times hop/sampleRate gives the times.
-// Eight bands at 11025 Hz with a 32-sample hop - 2.9ms resolution.
-//
-// It is not a drum track. Measured across 81 dumps, every band's own event rate is pinned near 3
-// per second whatever the tempo or the music is doing, so no single band can be a hit detector.
-// What is usable is where the bands agree: a real drum is broadband and lights several at once,
-// while a band's own steady chatter does not line up with the others. Nothing rate-limits the
-// agreement, so it follows the music.
-//
-// Measured against the beat grid, +-50ms, 81 tracks, median:
-//
-//     a segment-based detector (sharp, prominent)   28% precision   51% beat recall   3.5/s
-//     >= 3 bands agreeing                           44%             63%               3.1/s
-//     >= 4 bands agreeing                           49%             43%               1.8/s
-//
-// Three bands beats the segment-based detector on precision, recall and downbeat recall at a
-// slightly lower rate, so that is the threshold. (Precision is
-// measured against beats because that is the only annotation the analysis carries; a genuine
-// off-beat drum counts against it, so 44% is a floor, not the true figure.)
+// `track.rhythmstring`: zlib-deflated URL-safe base64 of `sampleRate hopSize bandCount (count delta delta ...) x bandCount`,
+// the audio's own onsets (8 bands, 11025 Hz, hop 32). No single band is a hit detector; a hit is where 3 or more bands
+// agree within CLUSTER_SEC (docs/DATA.md 2.5).
 
 export type Hit = {
 	t: number;
-	// how many of the eight bands fired together, 3..8. A broadband hit is a kick or a snare; a
-	// thin one is a hat or a pick. This is the only measure of a hit's size that comes from the
-	// onset itself rather than from the segment it happens to fall in
+	// bands that fired together, 3..8: the size of the hit itself, not of the segment it falls in
 	bands: number;
 };
 
-// how far apart two bands' onsets can be and still be the same hit. One frame of video is 16ms and
-// the analysis resolves 2.9ms, so this is generous by design: bands do not agree to the sample
+// onsets of different bands within this window are one hit
 const CLUSTER_SEC = 0.025;
 const MIN_BANDS = 3;
 
@@ -44,9 +20,7 @@ function base64ToBytes(text: string): Uint8Array {
 	return bytes;
 }
 
-// DecompressionStream is a platform feature (Chrome 80+, and this runs inside Spotify's Electron),
-// so there is no inflate implementation in this project and no dependency for one. If it is ever
-// missing the caller falls back to the segment-based detector rather than failing.
+// platform DecompressionStream, so no inflate dependency; a missing one yields no hits
 async function inflate(bytes: Uint8Array): Promise<string> {
 	const stream = new (window as unknown as { DecompressionStream: new (format: string) => unknown }).DecompressionStream(
 		"deflate"
@@ -110,7 +84,7 @@ export async function decodeHits(rhythmstring: unknown): Promise<Hit[]> {
 		}
 		return clustersOf(bands);
 	} catch {
-		// no DecompressionStream, or the string was not what we think it is
+		// no DecompressionStream, or a malformed string
 		return [];
 	}
 }

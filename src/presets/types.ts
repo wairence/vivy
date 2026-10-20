@@ -39,14 +39,8 @@ export function currentEnergy(frame: PresetFrame): number {
 	return sampleCurve(frame.audio.loudnessCurve, frame.progressSec);
 }
 
-// What a simulation reports about itself, for the headless check to assert on.
-//
-// A preset that draws strokes is fully checked by the fake canvas: every number it hands over is
-// seen. A preset that draws pixels is not - a Uint8ClampedArray turns a NaN into 0 on the way in,
-// so by the time a bad value reaches an ImageData the evidence has been destroyed. Any preset with
-// state that is not visible in its draw calls (a camera, a simulation) publishes it here once a
-// frame, and `check-presets.js` asserts every number in it is finite and within the range the
-// preset declares.
+// What a simulation reports about itself for the headless check: state not visible in draw calls (a camera, a simulation)
+// is published once a frame and asserted finite and in range. Pixel buffers cannot be checked: a Uint8ClampedArray turns NaN into 0.
 export let lastDiagnostics: { label: string; values: Record<string, number> } | null = null;
 export function publishDiagnostics(label: string, values: Record<string, number>): void {
 	lastDiagnostics = { label, values };

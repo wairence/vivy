@@ -1,50 +1,40 @@
-// The sound that is about to happen, and everything the analysis knows about it.
-//
-// Not the one happening: the one about to. A mark peaks some time after it is lit and an event is
-// read at its peak, so the response has to start early; the analysis is a timeline, so the next
-// segment is already in memory with its loudness, its attack and how far it falls. Every preset that
-// puts one mark on screen per sound reads it from here, so they all answer the same sounds the same way.
+// The sound about to happen, read from the analysis timeline so marks can be lit before it.
 import { rankOf, TrackAudioData } from "../audio-data";
 
 export type NextSound = {
-	// true on exactly one frame per sound, `lead` seconds before it, so a response that needs that
-	// long to reach full strength lands on the sound
+	// true on one frame per sound, `lead` seconds before it
 	fired: boolean;
-	// its amplitude over what a big hit is on THIS track - unclamped, a per-track scale and never a
-	// constant: loudness is a property of the mastering
+	// amplitude over this track's big-hit scale; deliberately unclamped
 	amp: number;
-	// dull against ringing, ranked within the track (timbre[1]) - the nearest honest thing to a register
+	// dull against ringing, ranked within the track (timbre[1])
 	ringing: number;
-	// how long its light should take to rise, s - from loudness_max_time, never under three frames
+	// seconds for its light to rise, from loudness_max_time
 	rise: number;
-	// how long it holds, s - short if it is gone before the next sound, long if it rings under it.
-	// Bounded in beats: a fifth of one to a beat and a half
+	// seconds it holds, bounded to 0.4-1.6 beats
 	decay: number;
 	// 0 for a slow swell, 1 for an attack that peaks at once
 	sharp: number;
-	// 0 for a vowel, 1 for a full-spectrum crack - how many rhythm bands its onset lit
+	// 0 for a vowel, 1 for a full-spectrum crack: rhythm bands lit at its onset
 	breadth: number;
 	// how far ahead it is answered, s
 	lead: number;
-	// louder than a running average of the hits around here - a property of the sound, not of a bar line
+	// louder than a running average of recent hits
 	standout: boolean;
 };
 
-// how far above a typical recent hit one has to reach to stand out
 const STANDOUT_OVER = 1.1;
 
 export function createNextSound() {
 	let nextSeg = 0;
 	let lastScan = -1;
 	let lastStart: number | null = null;
-	// what a hit sounds like around here, updated once per sound
 	let average = 0;
 
-	// `beat` is this track's beat in seconds; `fallbackAmp` is what to report when there is no analysis
+	// `beat` in seconds; `fallbackAmp` is reported without analysis
 	return (audio: TrackAudioData | null, progressSec: number, beat: number, fallbackAmp: number): NextSound => {
 		const segs = audio?.segments;
 		if (segs && segs.length > 0) {
-			// a seek, or the first frame: binary search. Otherwise walk forward
+			// binary search after a seek, otherwise walk forward
 			if (progressSec < lastScan || progressSec - lastScan > 0.5) {
 				let lo = 0;
 				let hi = segs.length - 1;
@@ -86,7 +76,6 @@ export function createNextSound() {
 		}
 		const lead = Math.min(0.4, rise * 0.9);
 
-		// judged against the average before this sound joins it
 		const standout = average > 1e-3 && amp > average * STANDOUT_OVER;
 		const fired = coming !== null && coming.start !== lastStart && coming.start - progressSec <= lead;
 		if (fired && coming) {

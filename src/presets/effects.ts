@@ -2,9 +2,7 @@ import { sectionIndexAt, TrackAudioData } from "../audio-data";
 
 type Segment = SpotifyAudioAnalysis["segments"][number];
 
-// a shimmering, iridescent tint for a hit (kick/snare), used by Drift - rotates the base colour's channels through
-// a slowly cycling phase (cheap, no HSL math) and blends it in proportional to `amount`, so each hit
-// flashes a slightly different hue instead of one fixed accent colour
+// iridescent tint for a hit (Drift): rotates the colour channels by a slow phase, so each hit flashes a slightly different hue
 export function shimmerPhase(t: number): number {
 	return (Math.sin(t * 2.4) + 1) / 2;
 }
@@ -14,9 +12,7 @@ export function shimmerTint(
 	amount: number
 ): { r: number; g: number; b: number } {
 	if (amount < 0.02) return base;
-	// callers pass c.pop straight through, which spikes to ~1 on a hard beat - at amount=1 this is a
-	// full R/G/B channel swap, not a shimmer, and reads as a glitch flash rather than an iridescent
-	// tint. Capping it keeps the hue nudge visible on every hit without ever fully overwriting colour
+	// uncapped, amount 1 is a full channel swap that reads as a glitch
 	const a = Math.min(0.4, amount);
 	const rotA = { r: base.b, g: base.r, b: base.g };
 	const rotB = { r: base.g, g: base.b, b: base.r };
@@ -33,14 +29,9 @@ export function timbreBrightness(segment: Segment | null): number {
 	return Math.max(-1, Math.min(1, (segment.timbre[1] || 0) / 100));
 }
 
-// The harmony's colour: each section of the track has its own key in the analysis, and the palette
-// leans off the album's hue by how far that key sits from the track's home key on the circle of
-// fifths. In the home key the colour is the album's own. Measured over 105 tracks: a section's key
-// differs from the last one 1.6 times a minute, and half of all playing time is away from home - so
-// the picture re-tints about as often as the song changes part, and holds still in between.
-// (Following the chroma's tonal centre instead wobbled +-15 degrees every second on every track
-// measured, which is not a statement about the music.)
-// The lean at the far side of the circle, in turns of hue, and how fast it may move per second
+// each section has its own key; the hue leans off the album's by its distance from the home key on the circle
+// of fifths, so the picture re-tints about as often as the song changes part. Lean at the far side, in turns of hue,
+// and the most it may move per second
 const HUE_SWING = 0.26;
 const HUE_RATE = 0.05;
 
@@ -67,10 +58,8 @@ export function createKeyHue() {
 	};
 }
 
-// The glow over a picture that is redrawn whole every frame: what is already bright, blurred at two
-// sizes and added back - a tight core that is steady, and a wide halo whose strength is the caller's
-// to drive (it is where an event is seen). Both are rendered small: they are blurs, so resolution is
-// wasted on them. Not for a canvas that accumulates - that would re-blur its own history.
+// glow over a picture redrawn whole every frame: bright parts blurred at two sizes and added back, a steady core and
+// a wide halo driven by the caller. Rendered small (blurs). Not for a canvas that accumulates.
 const GLOW_CORE_DIV = 4;
 const GLOW_HALO_DIV = 12;
 

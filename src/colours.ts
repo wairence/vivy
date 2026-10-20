@@ -1,15 +1,6 @@
-// ---- the colours --------------------------------------------------------------------------------------------
-// Each preset has its own colour settings, set in the knobs panel and kept across restarts:
-//   cover    the cover's own palette, three colours Spotify extracts from the art (dark, vibrant, light)
-//   custom   two or three colours picked in the panel
-// and what moves a colour along that palette - the gradient. What a gradient can follow depends on what
-// the preset is made of, so each preset names its own (Ridgeline: the height of a ridge, its depth, the
-// sound; Drift: its layers, depth, the sound of each mark, the music). `harmony` is how far the key of
-// each section turns the hue (0 keeps the colours exactly as picked).
-//
-// A preset declares its gradients once, at module scope, as it declares its knobs:
-//     const COLOURS = colourSettings("ridge", [["height", "Height", "what it does"], ...]);
-// and reads COLOURS.follows / COLOURS.mode, which the panel changes under it.
+// Per-preset colour settings (knobs panel, kept across restarts): `cover` palette from the art or `custom` picked colours,
+// the gradient the colour follows (named by each preset), and `harmony`, how far each section's key turns the hue (0 = as picked).
+// Usage, at module scope: const COLOURS = colourSettings("ridge", [["height", "Height", "what it does"], ...]); read COLOURS.follows / .mode.
 import { bumpTune } from "./presets/tune";
 
 export type Rgb = { r: number; g: number; b: number };
@@ -67,12 +58,8 @@ export const hexToRgb = (hex: string): Rgb => {
 export const rgbToHex = ({ r, g, b }: Rgb) =>
 	"#" + [r, g, b].map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
 
-// The palette a preset draws with this frame, as HSL stops, first to last.
-// The cover's three colours each keep their place in a band of lightness, dark to light, with enough
-// colour to read. Pulled all into one band, three different
-// colours come out as one, and a gradient between them is no gradient.
-// Picked colours are kept as picked, only kept off pure black and white, where there is no light left
-// to shape anything with.
+// The palette a preset draws with this frame, as HSL stops. Cover colours keep their own band of lightness (pulled into one
+// band they collapse into a single colour); picked colours are kept as picked, only off pure black and white.
 const COVER_BANDS = [
 	[0.3, 0.44],
 	[0.46, 0.58],
@@ -92,14 +79,8 @@ export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 	});
 }
 
-// The cover's own colours, by area, for a preset whose light adds up on black (Drift): there a
-// difference in lightness hardly reads - a brighter stroke just looks nearer - and the dark, vibrant
-// and light colour Spotify extracts are often three shades of one hue. So the cover itself is looked
-// at: its coloured pixels, grouped by hue, and every group that covers a real part of the coloured
-// area is a colour of the palette, dark to light. A speck of another colour (a red badge on a blue
-// cover, 4% of it) is not a colour of that cover: blended into the gradient it would turn blue to
-// purple to red. A cover with one such group, or none, gives [] - it is of one colour,
-// and the extracted shades of it are used.
+// The cover's own colours by area, for Drift, where light adds up on black and lightness hardly reads: pixel hues are grouped
+// and groups covering a real share of the coloured area become the palette. Fewer than two such groups gives [].
 const SHARE = 0.1;
 export function coverHues(px: Uint8ClampedArray): Rgb[] {
 	const BINS = 36;

@@ -1,7 +1,5 @@
-// Headless sanity check for the presets, which otherwise only run inside the Spotify client: every
-// preset is driven for a few hundred frames against a fake canvas that asserts the numbers it is
-// handed are sane, and that a paused frame renders exactly the same calls as the frame before it.
-// Run with `npm run check`.
+// Headless check (`npm run check`): each preset runs on a fake canvas that asserts finite, in-range
+// numbers and that a paused frame repeats the previous one call for call.
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
@@ -59,16 +57,8 @@ function checkStyle(op, value) {
 	return value;
 }
 
-// A pixel buffer, as one number. Otherwise an ImageData logs as `[object Object]`, so for a preset
-// that draws by `putImageData` neither of this harness's two jobs would be done: no number inside
-// it would be checked, and the freeze-on-pause test would compare two identical strings while the
-// pixels underneath were free to change. FNV-1a over the bytes: enough to notice one changed pixel,
-// and cheap.
-//
-// It cannot catch a NaN: a Uint8ClampedArray silently turns NaN into 0,
-// so by the time a value reaches an ImageData the evidence is gone. That is what `publishDiagnostics`
-// in presets/types.ts is for - a preset with a simulation behind it reports the state of the
-// simulation itself, and the assert below covers it.
+// A pixel buffer as one FNV-1a hash, so putImageData draws take part in the pause comparison. NaN is
+// invisible here (clamped to 0); presets with a simulation report it through publishDiagnostics.
 function hashPixels(data) {
 	let h = 0x811c9dc5;
 	for (let i = 0; i < data.length; i++) {
@@ -126,8 +116,7 @@ function createContext() {
 		record("createRadialGradient", args);
 		return { addColorStop: (stop, color) => record("addColorStop", [stop, checkStyle("addColorStop", color)]) };
 	};
-	// enough for a preset that labels what it draws. Width is proportional to the string so a layout
-	// that measures text lays out the same way here as in a browser, deterministically
+	// Width proportional to the string: deterministic layout.
 	ctx.measureText = text => ({ width: String(text).length * 0.55 * (Number(ctx.__fontPx) || 10) });
 	ctx.createImageData = (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) });
 
@@ -188,8 +177,7 @@ global.Path2D = class {
 global.document = {
 	createElement: () => ({ width: 0, height: 0, getContext: () => createContext() })
 };
-// just enough for a module that looks for a `window` to load in plain Node - actually using the
-// browser (new AudioContext(), real WebGL) still throws inside draw(), caught below and skipped
+// Lets modules that look for `window` load in Node; real AudioContext/WebGL still throw in draw(), skipped below.
 global.window = global;
 
 function fakeAudio(seed) {
@@ -215,8 +203,7 @@ function fakeAudio(seed) {
 		loudnessCurve.push({ t, y: Math.pow(10, (-30 + random() * 28) / 20) });
 	}
 
-	// bars every four beats, and four sections of alternating loudness so the anticipation and
-	// impact signals actually get exercised rather than sitting at zero for the whole run
+	// Alternating section loudness so the anticipation and impact signals are exercised.
 	const bars = [];
 	for (let i = 0; i + 4 <= beats.length; i += 4)
 		bars.push({ start: beats[i].start, duration: beats[i + 4 - 1].start - beats[i].start + 0.48, confidence: 0.8 });
@@ -231,9 +218,7 @@ function fakeAudio(seed) {
 const { PRESETS } = require(path.join(OUT, "presets", "index.js"));
 const common = require(path.join(OUT, "presets", "types.js"));
 
-// what a simulation says about itself, checked on every frame a preset publishes it. The fake
-// canvas cannot see inside a Float32Array, and a pixel buffer destroys the evidence of a NaN, so
-// this is the only place a fluid or a field solver can be caught going bad.
+// Simulation state published by a preset: the only way to catch a NaN inside a solver.
 function checkDiagnostics(where) {
 	const d = common.lastDiagnostics;
 	if (!d) return;
@@ -272,8 +257,7 @@ for (const audio of [fakeAudio(7), null]) {
 			preset.draw(frameAt(progressSec - 40, true));
 			preset.draw(frameAt(progressSec - 40 + 1 / 60, true));
 
-			// paused: consecutive frames must be byte-identical, otherwise the
-			// preset keeps animating (or fading its own trails away) while the music is stopped
+			// paused: consecutive frames must be identical
 			preset.draw(frameAt(progressSec, false));
 			log = [];
 			preset.draw(frameAt(progressSec, false));
@@ -286,8 +270,7 @@ for (const audio of [fakeAudio(7), null]) {
 			console.log(`ok  ${label}${first.length === 0 ? " (frozen, no draw calls)" : ""}`);
 		} catch (e) {
 			checking = false;
-			// a preset that needs a real browser (AudioContext) can't run in plain Node - skip rather
-			// than fail; it is only verifiable via `npm run preview`
+			// needs a real browser: verify with `npm run preview`
 			if (e instanceof ReferenceError && /AudioContext/.test(e.message)) {
 				console.log(`skip ${label}: needs a real browser (${e.message}) - verify with npm run preview`);
 			} else {
@@ -297,8 +280,7 @@ for (const audio of [fakeAudio(7), null]) {
 	}
 }
 
-// The knobs (T in the client): every one at the bottom of its slider, then every one at the top. A
-// slider's ends are part of the preset, so no end may draw a NaN.
+// Knobs: all at min, then all at max; no end may draw a NaN.
 {
 	const tune = require(path.join(OUT, "presets", "tune.js"));
 	for (const definition of PRESETS) {
@@ -321,8 +303,7 @@ for (const audio of [fakeAudio(7), null]) {
 	}
 }
 
-// The colours: every source with every gradient, from a dark, a grey and a light cover palette and
-// from picked colours (pure black and white among them). No combination may draw a NaN.
+// Colours: every source and gradient over dark, grey and light palettes and picked colours; no NaN.
 {
 	const colours = require(path.join(OUT, "colours.js"));
 	const palette = [{ r: 12, g: 20, b: 60 }, { r: 128, g: 128, b: 128 }, { r: 250, g: 240, b: 200 }];
@@ -368,8 +349,7 @@ for (const audio of [fakeAudio(7), null]) {
 }
 
 for (const warning of warnings) console.log(`warn  ${warning}`);
-// Between tracks: the analysis goes away, the clock goes back to zero, and a different song arrives at a
-// different level. The conductor's level may not climb while it waits and may not step when it joins.
+// Between tracks the conductor's level may not climb while waiting nor step when the next track joins.
 {
 	const { createConductor } = require(path.join(OUT, "presets", "conductor.js"));
 	const conduct = createConductor();
@@ -397,8 +377,7 @@ for (const warning of warnings) console.log(`warn  ${warning}`);
 	console.log(`ok  between tracks (level never above ${leaving.toFixed(2)} while waiting, worst one-frame step ${worst.toFixed(4)})`);
 }
 
-// The smooth clock: the player reports whole milliseconds, and at 240 Hz that is a 20% step in every
-// sixth frame. Fed exactly that, what it hands on must advance evenly and stay on the player's time.
+// Smooth clock: whole-ms player time at 240 Hz must come out evenly spaced and on the player's time.
 {
 	const { createSmoothClock } = require(path.join(OUT, "audio-sync.js"));
 	const clock = createSmoothClock();
