@@ -10,10 +10,10 @@
 // A preset declares its gradients once, at module scope, as it declares its knobs:
 //     const COLOURS = colourSettings("ridge", [["height", "Height", "what it does"], ...]);
 // and reads COLOURS.follows / COLOURS.mode, which the panel changes under it.
-import { Hsl, rgbToHsl } from "./presets/flowfield-common";
 import { bumpTune } from "./presets/tune";
 
 export type Rgb = { r: number; g: number; b: number };
+export type Hsl = { h: number; s: number; l: number };
 export type ColourMode = "cover" | "custom";
 export type Gradient = readonly [id: string, name: string, what: string];
 export type Colours = { mode: ColourMode; stops: string[]; follows: string; harmony: number };
@@ -169,4 +169,35 @@ export function paletteAt(p: Hsl[], t: number): Hsl {
 	// a grey stop has no hue of its own: take the other one's, or a fade to grey swings round the wheel
 	const h = a.s < 0.05 ? b.h : b.s < 0.05 ? a.h : a.h + dh * f;
 	return { h, s: a.s + (b.s - a.s) * f, l: a.l + (b.l - a.l) * f };
+}
+
+export function rgbToHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl {
+	const rn = r / 255;
+	const gn = g / 255;
+	const bn = b / 255;
+	const max = Math.max(rn, gn, bn);
+	const min = Math.min(rn, gn, bn);
+	const d = max - min;
+	const l = (max + min) / 2;
+	let h = 0;
+	if (d > 1e-6) {
+		if (max === rn) h = ((gn - bn) / d) % 6;
+		else if (max === gn) h = (bn - rn) / d + 2;
+		else h = (rn - gn) / d + 4;
+		h = (((h / 6) % 1) + 1) % 1;
+	}
+	return { h, s: d < 1e-6 ? 0 : d / (1 - Math.abs(2 * l - 1)), l };
+}
+
+export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+	const hue = (((h % 1) + 1) % 1) * 6;
+	const c = (1 - Math.abs(2 * l - 1)) * s;
+	const x = c * (1 - Math.abs((hue % 2) - 1));
+	const m = l - c / 2;
+	const k = Math.floor(hue) % 6;
+
+	const rgb =
+		k === 0 ? [c, x, 0] : k === 1 ? [x, c, 0] : k === 2 ? [0, c, x] : k === 3 ? [0, x, c] : k === 4 ? [x, 0, c] : [c, 0, x];
+
+	return { r: Math.round((rgb[0] + m) * 255), g: Math.round((rgb[1] + m) * 255), b: Math.round((rgb[2] + m) * 255) };
 }

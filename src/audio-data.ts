@@ -27,16 +27,13 @@ export type TrackAudioData = {
 	// the track's own structure, with each section's loudness in dB. This is what makes anticipating
 	// a chorus possible at all - it is the only part of the analysis that describes the future
 	sections: Section[];
-	// each section's loudness as a rank within this track, 0..1, aligned with `sections`. This is
-	// what "how big is this part of the song" means in practice - see sectionRanks below
-	sectionIntensity: number[];
 	// the track's big moments and what the music does on the way into each - see track-structure.ts
 	moments: Moment[];
 	// the sub-beat grid, roughly two to four per beat. Carried but not used - see docs/DATA.md
 	tatums: Bar[];
 	// the audio's own onsets, from `rhythmstring` - see rhythm.ts. Empty when the track has no
-	// rhythmstring (8 of 89 dumps) or the platform cannot inflate it, and the `strike` in flowfield-common.ts
-	// falls back to the segment-based detector then
+	// rhythmstring (8 of 89 dumps) or the platform cannot inflate it; next-sound.ts then gives
+	// every sound a breadth of 0
 	hits: Hit[];
 	// every segment's timbre[1] ("how bright/ringing did that sound"), sorted - the only per-event
 	// scale with a usable spread. Raw it runs about -34..99 and sits differently on every track, so
@@ -126,18 +123,6 @@ function hitScaleOf(segments: SpotifyAudioAnalysis["segments"]): number {
 	return Math.max(0.02, sorted[Math.floor((sorted.length - 1) * 0.98)]);
 }
 
-// Each section's loudness as its rank within the track, 0..1. Rank rather than decibels because a
-// modern master compresses a chorus to about a decibel over a verse while an older one spans ten -
-// the same musical event, two unrelated numbers. Rank is immune to that and to outliers.
-function sectionRanks(sections: Section[]): number[] {
-	if (sections.length === 0) return [];
-	if (sections.length === 1) return [0.5];
-	const order = sections.map((s, i) => ({ i, loudness: s.loudness })).sort((a, b) => a.loudness - b.loudness);
-	const ranks = new Array<number>(sections.length).fill(0);
-	order.forEach((entry, position) => (ranks[entry.i] = position / (order.length - 1)));
-	return ranks;
-}
-
 // continuous loudness curve from segments (dB -> linear amplitude), so visuals have a
 // sense of the track's energy between beats, not just the beat attack itself
 function buildLoudnessCurve(segments: SpotifyAudioAnalysis["segments"]): CurvePoint[] {
@@ -170,48 +155,6 @@ export function sampleCurve(curve: CurvePoint[], t: number): number {
 	const a = curve[lo];
 	const b = curve[hi];
 	return a.y + ((t - a.t) / (b.t - a.t)) * (b.y - a.y);
-}
-
-// time (seconds) since the most recent beat at or before `t`, or null if there is no such beat
-export function timeSinceLastBeat(beats: SpotifyAudioAnalysis["beats"], t: number): number | null {
-	let lo = 0;
-	let hi = beats.length - 1;
-	if (hi < 0 || beats[0].start > t) return null;
-
-	while (lo < hi) {
-		const mid = Math.ceil((lo + hi) / 2);
-		if (beats[mid].start <= t) lo = mid;
-		else hi = mid - 1;
-	}
-
-	return t - beats[lo].start;
-}
-
-// How far `t` is from the nearest bar boundary, and how sure the tracker was about that bar.
-// Nearest, not "the bar containing t": the beat grid and the bar grid are estimated separately and
-// a beat that starts a bar can land a few milliseconds on either side of it. Asking only about the
-// bar that began before `t` marks such a beat as being most of a bar late, so real downbeats that
-// land early would be classified as weak.
-export function nearestBarStart(bars: Bar[], t: number): { distance: number; confidence: number } | null {
-	if (bars.length === 0) return null;
-	let lo = 0;
-	let hi = bars.length - 1;
-	while (lo < hi) {
-		const mid = Math.ceil((lo + hi) / 2);
-		if (bars[mid].start <= t) lo = mid;
-		else hi = mid - 1;
-	}
-	let best = bars[lo];
-	let distance = Math.abs(t - best.start);
-	for (const candidate of [bars[lo + 1], bars[lo - 1]]) {
-		if (!candidate) continue;
-		const d = Math.abs(t - candidate.start);
-		if (d < distance) {
-			distance = d;
-			best = candidate;
-		}
-	}
-	return { distance, confidence: Math.max(0, Math.min(1, best.confidence)) };
 }
 
 // the current section plus the ones after it, so a preset can see what is coming
@@ -330,8 +273,7 @@ export async function loadTrackAudioData(uri: string): Promise<TrackAudioData> {
 		tempo: analysis.track.tempo,
 		bars: Array.isArray(analysis.bars) ? analysis.bars : [],
 		sections,
-		sectionIntensity: sectionRanks(sections),
-		moments: findMoments(analysis.segments, Array.isArray(analysis.bars) ? analysis.bars : [], curve),
+		moments: findMoments(curve, Array.isArray(analysis.bars) ? analysis.bars : []),
 		hitScale: hitScaleOf(analysis.segments),
 		tatums: Array.isArray(analysis.tatums) ? analysis.tatums : [],
 		hits: await decodeHits((analysis.track as unknown as { rhythmstring?: unknown })?.rhythmstring),
@@ -420,7 +362,6 @@ export function trackDataFromFeatures(features: TrackAudioFeatures): TrackAudioD
 		tempo: features.tempo,
 		bars: [],
 		sections: [],
-		sectionIntensity: [],
 		moments: [],
 		hitScale: amplitude,
 		tatums: [],

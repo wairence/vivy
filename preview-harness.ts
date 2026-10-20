@@ -1,5 +1,6 @@
 import { PRESETS, Preset } from "./src/presets";
-import { lastConducted, lastDiagnostics } from "./src/presets/flowfield-common";
+import { lastConducted } from "./src/presets/conductor";
+import { lastDiagnostics } from "./src/presets/types";
 import { normaliseCurve } from "./src/audio-data";
 import { hexToRgb, setColours } from "./src/colours";
 
@@ -43,9 +44,6 @@ function fakeAudio() {
 		mode: 1,
 		time_signature: 4
 	}));
-	const order = sections.map((s, i) => ({ i, l: s.loudness })).sort((a, b) => a.l - b.l);
-	const sectionIntensity = new Array(sections.length).fill(0);
-	order.forEach((e, p) => (sectionIntensity[e.i] = p / (order.length - 1)));
 	// The same stretch the client applies. Without it the fake track sits at about 0.2 for its whole
 	// length - the bottom of the range every preset is tuned against - and everything looks dark and
 	// slow here while looking right in Spotify.
@@ -67,7 +65,6 @@ function fakeAudio() {
 		tempo: 128,
 		bars,
 		sections,
-		sectionIntensity,
 		moments: [],
 		hitScale: sorted[Math.floor((sorted.length - 1) * 0.98)]
 	};

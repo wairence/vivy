@@ -27,19 +27,6 @@ export function shimmerTint(
 	};
 }
 
-// fast (~2s) vs slow (~20s) moving averages of energy - the gap between them says whether a section
-// is building or settling right now, on a musical timescale rather than a per-frame one. `level` is
-// "how loud is this whole stretch on average", `trend` is "rising" (+) or "falling" (-)
-export function createEnergyTrend(fastRate = 0.6, slowRate = 0.05) {
-	let fast = 0.5;
-	let slow = 0.5;
-	return (energy: number, dt: number) => {
-		fast += (energy - fast) * Math.min(1, fastRate * dt);
-		slow += (energy - slow) * Math.min(1, slowRate * dt);
-		return { level: slow, trend: fast - slow };
-	};
-}
-
 // timbre[1] is roughly "brightness" in Spotify's timbre basis and spans about +-100
 export function timbreBrightness(segment: Segment | null): number {
 	if (!segment) return 0;

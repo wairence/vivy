@@ -1,9 +1,6 @@
-import { nearestBarStart, sampleCurve, sectionIndexAt, segmentAt, timeSinceLastBeat } from "../audio-data";
-import { createEnergyTrend, timbreBrightness } from "./effects";
-import { hitIndexAt } from "../rhythm";
+import { sampleCurve, segmentAt } from "../audio-data";
+import { timbreBrightness } from "./effects";
 import { currentEnergy, PresetFrame } from "./types";
-
-type Segment = SpotifyAudioAnalysis["segments"][number];
 
 // The moments themselves come from `findMoments` in track-structure.ts, which reads the loudness
 // envelope rather than the section list. Deriving them from `sections` does not work on real
@@ -34,12 +31,6 @@ const smoothstep = (t: number) => {
 // longer. A floor of 3.5s would override the measurement rather than use it, and `leadSeconds`
 // reports the shortest lead-in it can for half of all moments across 89 dumps: the field would
 // accelerate for three and a half seconds into music that had prepared for one.
-// the strength of the narrowest hit worth reporting, so a three-band hit is a real event and an
-// eight-band one is the biggest thing the track has
-const HIT_FLOOR = 0.6;
-// how far a band agreement may sit from a segment start and still be that segment's hit. Two
-// different measurements of the same onset do not agree to the millisecond
-const HIT_MATCH = 0.06;
 const WINDUP_SPAN_MIN = 1.2;   // seconds of acceleration before the drop, at least
 const WINDUP_SPAN_MAX = 7;     // and at most - a run-up longer than this stops reading as one
 const WINDUP_HOLD = 1.9;       // speed stays up this long after the drop instead of dropping out
@@ -77,20 +68,6 @@ export type Conductor = {
 	// Brightness, line width and spawn rate may still read `energy` directly - a step in light is a
 	// hit, a step in motion is a fault.
 	loudness: number;
-	// loudness-driven accumulator: fast attack, slow release, nudged by beats where they exist
-	momentum: number;
-	// smoothed brightness/line-width driver
-	glow: number;
-	// a fast, short-lived spike on an actual beat (or a smaller one on a segment change) - momentum's
-	// slow release is deliberate for the ambient mood, but on its own it smears consecutive hits into
-	// one continuous blur. This is the crisp "you can see the beat" layer on top of it: ~30ms attack,
-	// ~120ms decay, so distinct hits stay visually distinct
-	pop: number;
-	// how strong the last beat was metrically, not how loud: 1 on a beat that starts a bar, ~0.45 on
-	// one that does not. From `bars`.
-	// Note this is a property of the beat, not a continuous signal - it
-	// holds its value until the next beat rather than easing
-	beatStrength: number;
 	// seconds until the next moment (see track-structure.ts), or null when there is none within the
 	// horizon. With `lookAhead`, one of the two signals that look forward - everything else
 	// describes now or the recent past
@@ -109,40 +86,9 @@ export type Conductor = {
 	// brace, so the picture winds up in the dark and the release is still the first thing that
 	// actually lights
 	windup: number;
-	// A real transient in the audio: from the audio's own onsets where the track has them, else a
-	// segment that begins with a fast attack and arrives louder than the segments around it. 0 on
-	// every other frame, 0..1 on the frame it happens.
-	//
-	// This is what a hit is, as opposed to what a beat is. Beats come from a tempo grid the tracker
-	// fits over the track, which on music that does not keep a regular metre - math rock, odd time,
-	// rubato - is a regular pulse laid over an irregular piece, and firing percussion from it looks
-	// exactly as wrong as that sounds. Segments are timbral events measured from the audio itself
-	// and follow the music whatever it does with its bar lines. On ordinary music the two coincide,
-	// because a kick makes a sharp segment.
-	strike: number;
-	// The hit that has not happened yet, if one is due within `seconds`. Returns how far off it is
-	// and how hard it will be.
-	//
-	// An event is read at its peak, not at its onset. Anything whose response takes time to reach
-	// full strength therefore has to be started before the hit, or its peak lands after it and the
-	// whole thing feels late. The star's rise alone is 0.4s of lateness.
-	//
-	// This is possible only because the analysis is a timeline rather than a stream: the segments
-	// after the playhead are already in memory, with their loudness and their attack.
-	lookAhead: (seconds: number) => { inSeconds: number; power: number; sharpness: number; downbeat: boolean } | null;
 	// swells into a moment and peaks on it, scaled by the moment's size. Bigger and rarer than
 	// `pop`, which fires on every beat
 	impact: number;
-	// how big the part of the song currently playing is, as its rank among this track's own
-	// sections: 0 is its quietest passage, 1 its biggest. Eased, so a boundary is a slope rather
-	// than a step. Read this to spend a budget on the chorus - particles, size, brightness - instead
-	// of spreading it evenly over a track that is not evenly interesting. 0.5 with no sections
-	sectionIntensity: number;
-	// fast (~2s) vs slow (~20s) energy average: trend is + while a section is building, - while it's
-	// settling; level is roughly "how loud is this whole stretch". Lets a preset's structure respond
-	// to the music's actual arc instead of only to per-frame loudness
-	trend: number;
-	level: number;
 	// eased timbre[1] (spectral brightness), 0..1
 	brightness: number;
 	// how percussive the current segment's own attack is, 0..1 - from loudness_max_time (how long the
@@ -155,21 +101,14 @@ export type Conductor = {
 	// A held chord stays near zero; an actual chord change or key shift spikes it. Distinct from pop
 	// (which fires on any beat/segment regardless of harmonic content)
 	harmonicShift: number;
-	segment: Segment | null;
-	beatHit: boolean;
 };
 
 // All the eased gesture/audio state the presets need, updated once per frame.
 // Call this only on frames that actually render - a paused frame must not advance any of it.
 export function createConductor() {
 	let lastTime: number | null = null;
-	let momentum = 0;
-	let glow = 0;
-	let pop = 0;
 	let brightness = 0;
-	let lastBeatSince: number | null = null;
 	let lastSegmentStart: number | null = null;
-	let beatStrength = 0.7;
 	let anticipation = 0;
 	let windup = 0;
 	let runInDip = 0;
@@ -186,17 +125,11 @@ export function createConductor() {
 	let lastMomentT: number | null = null;
 	let lastMomentSize = 0;
 	let lastLookAt = -1;
-	let avgSegmentDb = -20;
-	let hitCursor = 0;
-	let lastHitScan: number | null = null;
-	let strike = 0;
-	let sectionIntensity = 0.5;
 	let attackSharpness = 0;
 	let attackSharpnessTarget = 0;
 	let harmonicShift = 0;
 	let harmonicShiftTarget = 0;
 	let prevPitches: number[] | null = null;
-	const trendTracker = createEnergyTrend();
 	// this track's own middle loudness, worked out once when the analysis arrives
 	let curveMedian = 0.4;
 	let medianFor: unknown = null;
@@ -256,29 +189,11 @@ export function createConductor() {
 		}
 		// ~2s follower, for anything that has to describe the stretch just gone rather than this frame
 		approachEnergy += (energy - approachEnergy) * Math.min(1, 0.5 * dt);
-		const sinceBeat = audio ? timeSinceLastBeat(audio.beats, progressSec) : null;
-		const beatHit = sinceBeat !== null && (lastBeatSince === null || sinceBeat < lastBeatSince);
-		lastBeatSince = sinceBeat;
 		const segment = audio ? segmentAt(audio.segments, progressSec) : null;
 		// a segment boundary is a real timbral transition in the audio, not invented - a second,
 		// faster-changing (~0.2-0.4s) reactive signal between beats, not just on them
 		const segmentHit = segment !== null && segment.start !== lastSegmentStart;
 		lastSegmentStart = segment ? segment.start : null;
-		// a beat that starts a bar is the one the body counts on. Both grids come from the analysis
-		// separately and do not land on identical floats, so the tolerance is generous; with no bars
-		// at all every beat is treated as moderately strong rather than pretending to know
-		if (beatHit && sinceBeat !== null) {
-			const bars = audio?.bars ?? [];
-			const near = nearestBarStart(bars, progressSec - sinceBeat);
-			// the tracker's own confidence is carried through rather than assumed: a bar it was unsure
-			// about should not drive as hard an accent as one it was certain of, and songs whose metre
-			// the tracker cannot follow then simply produce a flatter pulse instead of a confident
-			// wrong one
-			beatStrength = near === null ? 0.7 : near.distance < 0.07 ? 0.55 + near.confidence * 0.45 : 0.45;
-		}
-		const popTarget = beatHit ? 0.35 + beatStrength * 0.65 : segmentHit ? 0.5 : 0;
-		pop += (popTarget - pop) * Math.min(1, (popTarget > pop ? 30 : 8) * dt);
-
 		// real per-segment attack character and harmonic movement - both only update ON a segment
 		// change (they describe the segment as a whole), eased the rest of the time so nothing snaps
 		if (segmentHit && segment) {
@@ -301,71 +216,15 @@ export function createConductor() {
 			}
 			prevPitches = segment.pitches;
 		}
-		// ---- a hit ---------------------------------------------------------------------------------
-		// From the audio's own onsets, where the track has them: `rhythmstring` decoded to eight
-		// bands, and a hit is where at least three of them fire together (see rhythm.ts for the
-		// format and for why a single band cannot be one). Measured against the beat grid over 81
-		// tracks this is better than the segment rule on every axis at the same rate - 44% precision
-		// against 28%, 63% beat recall against 51%, 61% downbeat recall against 46%.
-		//
-		// The count is the strength, and that is measured too: across 316k hits, 3 bands land on a
-		// beat 34% of the time and 8 bands 64%, rising monotonically. Breadth is how much of a hit
-		// it was. How loud it was is a different measurement, in the segment
-		// amplitude the preset reads separately.
-		strike = 0;
-		const hits = audio?.hits;
-		if (hits && hits.length > 0 && segmentHit && segment) {
-			// On the segment clock, filtered by the bands - not on a clock of its own. Fired directly
-			// off the onsets it is a measurably better detector and a measurably worse picture: the
-			// visible light lands on the beat 24% of the time against 41%. Everything else in the
-			// visual - the loudness curve, the attack character, the harmonic movement - is built from
-			// segments, so an event stream on a second clock puts the flash between the frames where
-			// the rest of the picture is already moving, and the two smear each other. One clock. The
-			// onsets say which segments are hits, which the segments themselves cannot tell us.
-			if (lastHitScan === null || progressSec < lastHitScan || progressSec - lastHitScan > 0.5)
-				hitCursor = Math.max(0, hitIndexAt(hits, progressSec - HIT_MATCH));
-			lastHitScan = progressSec;
-			while (hitCursor < hits.length && hits[hitCursor].t < segment.start - HIT_MATCH) hitCursor++;
-			// the broadest agreement anywhere inside this segment's onset window
-			for (let i = hitCursor; i < hits.length && hits[i].t <= segment.start + HIT_MATCH; i++)
-				strike = Math.max(strike, HIT_FLOOR + ((hits[i].bands - 3) / 5) * (1 - HIT_FLOOR));
-		} else if (segmentHit && segment) {
-			// no rhythmstring (8 of 89 dumps) or no way to inflate it: a transient stands out from
-			// its neighbours, so "loud" here means loud relative to this track's own segments rather
-			// than on any absolute scale
-			avgSegmentDb += (segment.loudness_max - avgSegmentDb) * 0.03;
-			const prominence = Math.min(1, Math.max(0, (segment.loudness_max - avgSegmentDb) / 4));
-			if (attackSharpnessTarget > 0.4) strike = Math.min(1, attackSharpnessTarget * (0.45 + prominence));
-		}
-
 		attackSharpness += (attackSharpnessTarget - attackSharpness) * Math.min(1, 6 * dt);
 		harmonicShift += (harmonicShiftTarget - harmonicShift) * Math.min(1, (harmonicShiftTarget > harmonicShift ? 25 : 7) * dt);
 
-		// how hard the current hit is, used as a smoothing target rather than applied directly, so
-		// tracks with unreliable beat tracking still ride their real dynamics instead of sitting flat
-		let hitTarget = energy * 0.35;
-		if (beatHit) {
-			const hitAmp = segment ? Math.pow(10, segment.loudness_max / 20) : energy;
-			hitTarget = Math.max(hitTarget, Math.min(1.6, hitAmp * 2.2));
-		}
-		momentum += (hitTarget - momentum) * Math.min(1, (hitTarget > momentum ? 4 : 0.4) * dt);
-
 		brightness += (Math.max(0, timbreBrightness(segment)) - brightness) * Math.min(1, 0.8 * dt);
 
-		const glowTarget = Math.max(0.22, momentum * 0.7 + energy * 0.25);
-		glow += (glowTarget - glow) * Math.min(1, (glowTarget > glow ? 4 : 0.5) * dt);
-
 		// ---- looking forward ---------------------------------------------------------------------
-		// `sections` carries each part of the track with its own loudness, so the next loud one is
-		// knowable before it arrives. Scan ahead rather than only to the next section: a chorus is
-		// usually preceded by the quiet bar that sets it up, and stopping at the first neighbour
-		// would miss it every time
-		const sections = audio?.sections ?? [];
-		const ranks = audio?.sectionIntensity ?? [];
 		// everything about the boundary is evaluated slightly ahead of the clock, so the release
 		// arrives with the downbeat instead of after it
 		const lookAt = progressSec + IMPACT_LEAD_SEC;
-		const sectionIndex = sectionIndexAt(sections, lookAt);
 		// The moments come from the loudness envelope, not from section boundaries - see findMoments.
 		// There are at most a dozen per track, so a plain scan costs nothing.
 		const moments = audio?.moments ?? [];
@@ -396,13 +255,6 @@ export function createConductor() {
 				}
 		lastLookAt = lookAt;
 		const sinceMoment = lastMomentT === null ? null : lookAt - lastMomentT;
-
-		const intensityTarget = sectionIndex >= 0 && ranks.length > 0 ? (ranks[sectionIndex] ?? 0.5) : 0.5;
-		// ~7s, not 0.6s. Section boundaries are a timbral segmentation, not musical events, and at
-		// 0.6s a boundary arrived as a visible step in speed and brightness - an event manufactured
-		// where the music has none. A signal describing slow context has to move slower than the
-		// events it sits underneath.
-		sectionIntensity += (intensityTarget - sectionIntensity) * Math.min(1, 0.14 * dt);
 
 		// The release, as a shape in time. Rises for IMPACT_RISE seconds into the moment so its peak
 		// lands on the moment rather than starting there, then falls away over IMPACT_FALL. Both
@@ -473,126 +325,26 @@ export function createConductor() {
 		runInDip += (dipTarget - runInDip) * Math.min(1, 4 * dt);
 		runInBuild += (buildTarget - runInBuild) * Math.min(1, 4 * dt);
 
-		const { level, trend } = trendTracker(energy, dt);
-
-		// segments are sorted, so the next one after the playhead is a binary search away
-		const lookAhead = (seconds: number) => {
-			const list = audio?.segments;
-			if (!list || list.length === 0) return null;
-			let lo = 0;
-			let hi = list.length - 1;
-			while (lo < hi) {
-				const mid = Math.floor((lo + hi) / 2);
-				if (list[mid].start <= progressSec) lo = mid + 1;
-				else hi = mid;
-			}
-			const next = list[lo];
-			if (!next || next.start <= progressSec || next.start - progressSec > seconds) return null;
-			// whether the hit that is coming lands on a bar line. `beatStrength` describes the last
-			// beat, which is the wrong question when the whole point is to act before the next one
-			const near = nearestBarStart(audio?.bars ?? [], next.start);
-			return {
-				// to the segment's peak, not to its start. Aligning an event by peak is the whole
-				// point of looking ahead, and a segment's loudest instant is `loudness_max_time`
-				// into it - up to a tenth of a second of lateness that no amount of tuning downstream
-				// could have removed
-				inSeconds: next.start + next.loudness_max_time - progressSec,
-				// against the track's own big hits, and not clamped. Both halves matter: a fixed x1.8 on
-				// Spotify's absolute scale saturates for most of a loud master, and a clamp at 1 makes
-				// every hit in a chorus compare equal - which silently disables anything built on "was
-				// that bigger than the last one"
-				power: Math.pow(10, next.loudness_max / 20) / (audio?.hitScale || 0.56),
-				sharpness: Math.max(0, Math.min(1, 1 - next.loudness_max_time / 0.25)),
-				downbeat: near === null || near.distance < 0.09
-			};
-		};
-
 		const conducted: Conductor = {
 			dt,
 			scale,
-			lookAhead,
 			energy,
 			loudness,
-			momentum,
-			glow,
-			pop,
-			beatStrength,
-			strike,
 			timeToImpact,
 			anticipation,
 			windup,
 			runInDip,
 			runInBuild,
 			impact,
-			sectionIntensity,
 			attackSharpness,
 			harmonicShift,
-			trend,
-			level,
 			brightness,
-			segment,
-			beatHit
 		};
 		lastConducted = conducted;
 		return conducted;
 	};
 }
 
-// ---------------------------------------------------------------------------------------------
-// Two debugging aids. Neither is read by the render path.
-
 // The last frame's conductor, so the dev-build marker (B in the client) can record the signals at
 // the moment it was pressed.
 export let lastConducted: Conductor | null = null;
-
-// What a simulation reports about itself, for the headless check to assert on.
-//
-// A preset that draws strokes is fully checked by the fake canvas: every number it hands over is
-// seen. A preset that draws pixels is not - a Uint8ClampedArray turns a NaN into 0 on the way in,
-// so by the time a bad value reaches an ImageData the evidence has been destroyed. Any preset with
-// state that is not visible in its draw calls (a camera, a simulation) publishes it here once a
-// frame, and `check-presets.js` asserts every number in it is finite and within the range the
-// preset declares.
-export let lastDiagnostics: { label: string; values: Record<string, number> } | null = null;
-export function publishDiagnostics(label: string, values: Record<string, number>): void {
-	lastDiagnostics = { label, values };
-}
-
-export type Hsl = { h: number; s: number; l: number };
-
-export function rgbToHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl {
-	const rn = r / 255;
-	const gn = g / 255;
-	const bn = b / 255;
-	const max = Math.max(rn, gn, bn);
-	const min = Math.min(rn, gn, bn);
-	const d = max - min;
-	const l = (max + min) / 2;
-	let h = 0;
-	if (d > 1e-6) {
-		if (max === rn) h = ((gn - bn) / d) % 6;
-		else if (max === gn) h = (bn - rn) / d + 2;
-		else h = (rn - gn) / d + 4;
-		h = (((h / 6) % 1) + 1) % 1;
-	}
-	return { h, s: d < 1e-6 ? 0 : d / (1 - Math.abs(2 * l - 1)), l };
-}
-
-// the extracted album colour as HSL, with saturation/lightness pulled into a usable band so a
-// near-grey or near-black cover doesn't collapse into mud (unused by the current presets)
-export function albumHsl(rgb: { r: number; g: number; b: number }): Hsl {
-	const { h, s, l } = rgbToHsl(rgb);
-	return { h, s: Math.max(0.45, Math.min(0.95, s)), l: Math.max(0.45, Math.min(0.66, l)) };
-}
-export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
-	const hue = (((h % 1) + 1) % 1) * 6;
-	const c = (1 - Math.abs(2 * l - 1)) * s;
-	const x = c * (1 - Math.abs((hue % 2) - 1));
-	const m = l - c / 2;
-	const k = Math.floor(hue) % 6;
-
-	const rgb =
-		k === 0 ? [c, x, 0] : k === 1 ? [x, c, 0] : k === 2 ? [0, c, x] : k === 3 ? [0, x, c] : k === 4 ? [x, 0, c] : [c, 0, x];
-
-	return { r: Math.round((rgb[0] + m) * 255), g: Math.round((rgb[1] + m) * 255), b: Math.round((rgb[2] + m) * 255) };
-}

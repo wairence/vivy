@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./css/app.css";
-import { loadTrackAudioData, loadTrackAudioFeatures, nearestBarStart, trackDataFromFeatures, TrackAudioData } from "./audio-data";
-import { lastConducted } from "./presets/flowfield-common";
+import { loadTrackAudioData, loadTrackAudioFeatures, trackDataFromFeatures, TrackAudioData } from "./audio-data";
+import { lastConducted } from "./presets/conductor";
 import { AudioSync, createSmoothClock } from "./audio-sync";
 import { BUILD, DEV } from "./build-stamp";
 import { coverHues, hexToRgb } from "./colours";
@@ -19,60 +19,6 @@ function report(what: object) {
 		headers: { "Content-Type": "text/plain" },
 		body: JSON.stringify(what)
 	}).catch(() => {});
-}
-
-// Is the metrical grid actually regular? The bar tracker follows the music, so bar durations are
-// not required to be equal - but how unequal they are in practice, and how sure the tracker was, is
-// only answerable from real tracks. Reported once per track.
-function reportGrid(name: string, data: TrackAudioData) {
-	if (!DEV) return;
-	try {
-		reportGridOf(name, data);
-	} catch {
-		// a diagnostic must never cost the track its analysis
-	}
-}
-function reportGridOf(name: string, data: TrackAudioData) {
-	const durations = data.bars.map(b => b.duration);
-	const mean = durations.reduce((s, x) => s + x, 0) / Math.max(1, durations.length);
-	const variance = durations.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, durations.length);
-	const spread = mean > 0 ? Math.sqrt(variance) / mean : 0;
-	// how many beats land on a bar boundary - should be about 1/timeSignature if the two grids agree
-	let onBar = 0;
-	for (const beat of data.beats) {
-		const near = nearestBarStart(data.bars, beat.start);
-		if (near && near.distance < 0.07) onBar++;
-	}
-	const tempos = data.sections.map(x => Math.round(x.tempo));
-	// the decisive number: how many boundaries in this track would ever brace-and-release? Zero
-	// means the mechanic is silent for its whole length.
-	let impacts = 0;
-	for (let i = 1; i < data.sections.length; i++)
-		if (
-			data.sectionIntensity[i] - data.sectionIntensity[i - 1] >= 0.22 &&
-			data.sections[i].loudness - data.sections[i - 1].loudness >= 0.5
-		)
-			impacts++;
-	report({
-		grid: name,
-		bars: data.bars.length,
-		barSeconds: Number(mean.toFixed(3)),
-		// 0 = every bar identical, 0.1 = ten percent variation. the answer to "is the rhythm even"
-		barSpread: Number(spread.toFixed(3)),
-		barConfidence: Number(
-			(data.bars.reduce((s, b) => s + b.confidence, 0) / Math.max(1, data.bars.length)).toFixed(2)
-		),
-		beatsOnBar: data.beats.length ? Number((onBar / data.beats.length).toFixed(3)) : null,
-		timeSignatures: Array.from(new Set(data.sections.map(x => x.time_signature))),
-		sectionTempos: tempos.length ? `${Math.min(...tempos)}-${Math.max(...tempos)}` : null,
-		sections: data.sections.length,
-		sectionStarts: data.sections.map(x => Number(x.start.toFixed(1))),
-		sectionLoudness: data.sections.map(x => Number(x.loudness.toFixed(1))),
-		sectionIntensity: data.sectionIntensity.map(x => Number(x.toFixed(2))),
-		energyRange: `${data.loudnessCurve.length ? Math.min(...data.loudnessCurve.map(p => p.y)).toFixed(2) : "-"}..${data.loudnessCurve.length ? Math.max(...data.loudnessCurve.map(p => p.y)).toFixed(2) : "-"}`,
-		impactsInTrack: impacts,
-		detected: data.moments.map((m: { t: number }) => `${Math.floor(Math.round(m.t) / 60)}:${String(Math.round(m.t) % 60).padStart(2, "0")}`)
-	});
 }
 
 const PRESET_STORAGE_KEY = "vivy:preset";
@@ -438,7 +384,6 @@ export default function App() {
 							hitsWarned = true;
 							Spicetify.showNotification("Visualizer: rhythm onsets unavailable, hits fall back to segments", true);
 						}
-						reportGrid(item.name, data);
 						// the full analysis, for building the structure detector against real music
 						if (DEV) void fetch("http://localhost:8790/dump", {
 							method: "POST",

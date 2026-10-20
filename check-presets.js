@@ -67,7 +67,7 @@ function checkStyle(op, value) {
 //
 // It cannot catch a NaN: a Uint8ClampedArray silently turns NaN into 0,
 // so by the time a value reaches an ImageData the evidence is gone. That is what `publishDiagnostics`
-// in flowfield-common is for - a preset with a simulation behind it reports the state of the
+// in presets/types.ts is for - a preset with a simulation behind it reports the state of the
 // simulation itself, and the assert below covers it.
 function hashPixels(data) {
 	let h = 0x811c9dc5;
@@ -224,15 +224,12 @@ function fakeAudio(seed) {
 	for (let i = 0; i < 200; i += 25)
 		sections.push({ start: i, duration: 25, confidence: 0.7, loudness: i % 50 === 0 ? -18 : -8, tempo: 128, key: 0, mode: 1, time_signature: 4 });
 
-	const ordered = sections.map((s, i) => ({ i, l: s.loudness })).sort((a, b) => a.l - b.l);
-	const sectionIntensity = new Array(sections.length).fill(0);
-	ordered.forEach((e, pos) => (sectionIntensity[e.i] = ordered.length > 1 ? pos / (ordered.length - 1) : 0.5));
 	const { findMoments } = require(path.join(OUT, "track-structure.js"));
-	return { beats, segments, loudnessCurve, tempo: 128, bars, sections, sectionIntensity, moments: findMoments(segments, bars, loudnessCurve) };
+	return { beats, segments, loudnessCurve, tempo: 128, bars, sections, moments: findMoments(loudnessCurve, bars) };
 }
 
 const { PRESETS } = require(path.join(OUT, "presets", "index.js"));
-const common = require(path.join(OUT, "presets", "flowfield-common.js"));
+const common = require(path.join(OUT, "presets", "types.js"));
 
 // what a simulation says about itself, checked on every frame a preset publishes it. The fake
 // canvas cannot see inside a Float32Array, and a pixel buffer destroys the evidence of a NaN, so
@@ -374,7 +371,7 @@ for (const warning of warnings) console.log(`warn  ${warning}`);
 // Between tracks: the analysis goes away, the clock goes back to zero, and a different song arrives at a
 // different level. The conductor's level may not climb while it waits and may not step when it joins.
 {
-	const { createConductor } = require(path.join(OUT, "presets", "flowfield-common.js"));
+	const { createConductor } = require(path.join(OUT, "presets", "conductor.js"));
 	const conduct = createConductor();
 	const at = (audio, t) => conduct({ ctx: createContext(), width: WIDTH, height: HEIGHT, progressSec: t, isPlaying: true, audio, colorRgb: { r: 30, g: 215, b: 96 } });
 	const a = fakeAudio(7);

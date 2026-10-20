@@ -27,8 +27,8 @@
 // picture is redrawn every frame, so it may be glowed whole.
 import { createNoise2D } from "simplex-noise";
 import { createGlow, createKeyHue, keyHueAt } from "./effects";
-import { createConductor, hslToRgb } from "./flowfield-common";
-import { colourSettings, palette, paletteAt } from "../colours";
+import { createConductor } from "./conductor";
+import { colourSettings, hslToRgb, palette, paletteAt } from "../colours";
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
