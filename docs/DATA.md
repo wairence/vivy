@@ -2,7 +2,7 @@
 
 What vivy reads, how far each number can be trusted, and what the code derives from it.
 
-There are two layers. The first is what Spotify's audio analysis contains. The second is what `src/audio-data.ts`, `src/track-structure.ts`, `src/rhythm.ts` and `createConductor()` in `src/presets/flowfield-common.ts` compute from it.
+There are two layers. The first is what Spotify's audio analysis contains. The second is what `src/audio-data.ts`, `src/track-structure.ts`, `src/rhythm.ts` and `createConductor()` in `src/presets/conductor.ts` compute from it.
 
 Trust claims are measured on analysis dumps saved from real tracks (`analysis-dumps/`, not in the repository; a dev build saves one per track played while the dev server, `npm run preview`, is running). Each claim names its base. 81 dumps is 67 094 segments and 35 176 beats, masters from -1.9 dB to -19.8 dB, tempi from 66 to 200 BPM. Where a smaller base is named (25 tracks, 19 dumps), the claim comes from the earlier, smaller set. Where a field has never been measured, this file says so.
 
@@ -16,7 +16,7 @@ One request per track, for the whole track, before it plays. The analysis is a t
 2. If that does not return an object with `segments`, the same endpoint is fetched directly (`fetchAnalysisDirectly`): `audio-attributes/v1/audio-analysis/{id}` on `spclient.wg.spotify.com`, with the bearer token from `Spicetify.Platform.AuthorizationAPI`. The wrapper picks its request path from the client's version string, and on Spotify 1.3.0 that comparison takes the legacy path.
 3. Both paths can resolve with an error object (`{ code, error, message }`) instead of rejecting. The shape is checked before anything reads it, and the error text names both failures.
 
-`app.tsx` wraps this with a 10 s timeout, one retry after 1.2 s, a cache of four analyses and a prefetch of the next queued track.
+`ui/use-track-data.ts` wraps this with a 10 s timeout, one retry after 1.2 s, a cache of four analyses and a prefetch of the next queued track.
 
 ### When there is no analysis
 
@@ -94,7 +94,7 @@ Three nested grids, each `{ start, duration, confidence }`.
 
 - The grid is steady. Per-track bar duration varies by only 0 to 4% around the track's median (median bar 1.68 s).
 - `confidence` is a poor judge of it: p5/p50/p95 = 0.12 / 0.47 / 0.80 on grids that are demonstrably regular. Read the geometry, not the self-report.
-- A bar start coincides with a segment start only 28 to 68% of the time (median about 45%). The grids are independent, so always search for the nearest (`nearestBarStart`).
+- A bar start coincides with a segment start only 28 to 68% of the time (median about 45%). The grids are independent, so always search for the nearest bar start, not the bar that contains a time.
 - 100% of bar starts land within 30 ms of a beat, on all 81 tracks.
 
 `beats[]`
@@ -176,7 +176,6 @@ Read by the live code: `Hit.bands` of the hit nearest a segment start, as `bread
 | `loudnessCurve` | see below |
 | `hitScale` | see below |
 | `timbreSorted` | every segment's `timbre[1]`, sorted. `rankOf(sorted, value)` gives a 0..1 rank, or 0.5 when there are fewer than 16 values |
-| `sectionIntensity` | each section's `loudness` as a rank among this track's sections, 0..1. One section gives 0.5 |
 | `moments` | see below |
 | `hits` | decoded `rhythmstring` hits (section 2.5) |
 | `trackInfo` | `track`, verbatim |
@@ -185,7 +184,7 @@ Read by the live code: `Hit.bands` of the hit nearest a segment start, as `bread
 
 `hitScale`. The track's 98th percentile of segment amplitude (`10^(loudness_max/20)`), at least 0.02, 0.56 when there are fewer than 8 segments. Everything that asks "was that a big hit" divides by it. It replaced `min(1, amplitude * 1.8)`: measured across the dumps, 0% to 97% of a track's segments (median track about 57%) sit above that clamp, so in a chorus every hit compared equal and a "beat the loudest recent hit" test fired every 1.3 s on the busiest track. With the per-track scale the same test gave 1 to 4 a minute.
 
-`moments` (`findRises` in `track-structure.ts`). The few places where this track's own loudness takes its largest sustained step up. It does not claim these are choruses. Three earlier detectors read loudness and claimed that, and scored 2 accurate hits out of 11 firings across six tracks.
+`moments` (`findMoments` in `track-structure.ts`). The few places where this track's own loudness takes its largest sustained step up. It does not claim these are choruses. Three earlier detectors read loudness and claimed that, and scored 2 accurate hits out of 11 firings across six tracks.
 
 - Candidate score every 0.25 s from 8 s on: mean of the curve over 0.4..3 s after, against 0.4..4 s before, divided by `max(before, median * 0.4)`. The floor stops the track's own start from winning.
 - Greedy, largest first, at least 14 s apart, at most 5, each at least 40% of the track's best and at least 0.22 (about 1.7 dB).
@@ -205,11 +204,11 @@ Does it survive a modern master? Measured over 81 tracks by how hot the master i
 
 Compression flattens the average level, not the moment-to-moment range. Where drops were marked by ear, the detector landed within a second on the tracks checked; two tracks that start quiet and kick in put a moment in their first seconds.
 
-Disabled: the chorus-by-repetition detector in the same file (`ENABLED = false`). It builds per-bar chroma and timbre vectors, mean-centres them, finds boundaries with a checkerboard novelty kernel (Foote), groups the blocks and picks the group that repeats while loud and bright. Judged by ear it was wrong more often than right, and on one track a chorus felt right where it stayed silent. One track's labels were the times the visualiser fired, so its 3/3 was the detector scored against its own output. The code stays in the file, switched off.
+Removed in 0.3.0 after being switched off: a chorus-by-repetition detector. It built per-bar chroma and timbre vectors, mean-centred them, found boundaries with a checkerboard novelty kernel (Foote), grouped the blocks and picked the group that repeats while loud and bright. Judged by ear it was wrong more often than right, and on one track a chorus felt right where it stayed silent. One track's labels were the times the visualiser fired, so its 3/3 was the detector scored against its own output. The code is in v0.2.0 (`git show v0.2.0:src/track-structure.ts`).
 
 ### 3.2 Colour
 
-The cover's colours come from `Spicetify.colorExtractor` (dark, vibrant and light; `extractColorPreset` is the fallback) and are shaped into palettes in `colours.ts` (see ARCHITECTURE.md, Colours). `albumHsl` in flowfield-common.ts, which pulls saturation into 0.45..0.95 and lightness into 0.45..0.66, is not used by the current presets. `app.tsx` eases the displayed colour towards a new cover's with a 0.6 s time constant.
+The cover's colours come from `Spicetify.colorExtractor` (dark, vibrant and light; `extractColorPreset` is the fallback) and are shaped into palettes in `colours.ts` (see ARCHITECTURE.md, Colours). The frame loop (`ui/use-frame-loop.ts`) eases the displayed colours towards a new cover's with a 0.6 s time constant.
 
 `keyHueAt` (effects.ts) leans the hue off the album's by how far the playing section's `key` sits from the track's home key (`trackInfo.key`) on the circle of fifths. The home key gives no lean; the far side of the circle gives `HUE_SWING` = 0.26 turns; the square root makes the nearest key already visible. `createKeyHue` moves at most `HUE_RATE` = 0.05 turns per second. Measured over 105 tracks, a section's key differs from the previous one 1.6 times a minute and half of playing time is away from the home key. Following the chroma's tonal centre instead wobbled +-15 degrees every second on every track measured. Per-section key is a low-confidence estimate (section 2.3).
 
@@ -256,9 +255,9 @@ Between tracks (`GAP_REST` 0.12, `GAP_HOLD` 3 s, `JOIN_SECONDS` 1.5). While the 
 
 `standout` against a decaying peak (4.6 s half-life) would be cleared by 71 to 92% of hits. Against a running average of recent hits 2 to 34% do, and a compressed track getting almost none is correct.
 
-### 3.5 Computed, not read by either live preset
+### 3.5 Removed in 0.3.0
 
-The conductor also computes `momentum`, `glow`, `pop`, `beatStrength`, `beatHit`, `segment`, `strike`, `lookAhead`, `sectionIntensity`, `trend` and `level`. Each is described in a comment on the `Conductor` type in `flowfield-common.ts`. `app.tsx` reads `lastConducted` (every numeric field) only to write the dev-build marker, and `reportGrid` reports bar and section statistics in dev builds.
+Up to 0.2.0 the conductor also computed `momentum`, `glow`, `pop`, `beatStrength`, `beatHit`, `segment`, `strike`, `lookAhead`, `sectionIntensity`, `trend` and `level`, which neither live preset read. They are gone with their helpers; `git show v0.2.0:src/presets/flowfield-common.ts` has them, each described on the `Conductor` type. `dev.ts` writes every numeric field of `lastConducted` into the dev-build marker.
 
 `strike` is a segment start that has a rhythm hit within 60 ms, with strength from the band count (0.6 for 3 bands up to 1 for 8). Without a `rhythmstring` it falls back to a sharp, prominent segment. Fired directly off the onsets rather than on the segment clock it is a better detector and a worse picture: the light landed on the beat 24% of the time against 41%, because everything else runs on the segment clock and two event streams smear each other.
 
@@ -269,7 +268,7 @@ The conductor also computes `momentum`, `glow`, `pop`, `beatStrength`, `beatHit`
 | `loudness_max_time` as a percussion isolator | the segment describes the mix, not the drum. Three attempts |
 | absolute dB thresholds | failed three times. A flat 2.5 dB never fired on five real tracks; scaling to the track's dB range fired less, because one -20 dB fade-out set the range |
 | chorus from loudness (3 versions) | 2 accurate hits in 11 firings over six tracks. A track that is loud throughout has no loudness event at its chorus |
-| chorus from repetition (chroma + timbre) | see section 3.1. Code kept, switched off |
+| chorus from repetition (chroma + timbre) | see section 3.1. Removed in 0.3.0 |
 | `min(1, amplitude * 1.8)` | a ceiling inside a comparison, see `hitScale` |
 | a hand-made online "arrival" detector driving brightness and speed | fired 8 to 80 times a track, twice inside one second. Replaced by `moments` |
 | validating a detector on synthetic audio | scored 3/3 on data built to match its own assumptions, then found a whole song to be one chorus |

@@ -8,49 +8,55 @@ vivy is a Spicetify CustomApp: a page in the Spotify desktop client with a full-
 
 ```
 Spicetify.Player ---------------+
-Spicetify.getAudioData / fetch -+--> src/app.tsx --PresetFrame--> preset.draw(frame)
-Spicetify.extractColorPreset ---+    (React shell,                 |
-                                      rAF loop, input, UI)         +-- createConductor()  (flowfield-common.ts)
-                                                                   +-- createNextSound()  (Drift only)
-                                                                   +-- effects.ts, tune.ts
+Spicetify.getAudioData / fetch -+--> ui/use-track-data.ts --> ui/use-frame-loop.ts --PresetFrame--> preset.draw(frame)
+Spicetify.colorExtractor -------+    (track, analysis,         (canvas, rAF loop,                   |
+                                      cover colours)            frame rate cap)                      +-- createConductor()  (conductor.ts)
+                                                                                                     +-- createNextSound()  (Drift only)
+                                                                                                     +-- effects.ts, tune.ts
 ```
 
 | file | what it does |
 |---|---|
-| `src/app.tsx` | React shell: canvas, frame loop, track and colour state, keys, fullscreen, mini window, knobs panel |
+| `src/app.tsx` | React shell: preset choice, keys, fullscreen, idle hide, layout |
+| `src/ui/use-track-data.ts` | the playing track, loading its analysis, the cover's colours |
+| `src/ui/use-frame-loop.ts` | canvas size, the frame loop, colour easing, the frame rate cap |
+| `src/ui/mini-window.ts` | the picture-in-picture window (plain DOM) |
+| `src/ui/track-overlay.tsx` | track name, progress, seek and transport in fullscreen |
+| `src/ui/tune-panel.tsx`, `colour-panel.tsx`, `icons.tsx` | the knobs panel, its colour section, the icon buttons |
+| `src/frame-rate.ts` | the frame rate setting and the pacer |
+| `src/dev.ts` | dev builds only: analysis dump, B marker, log |
 | `src/audio-data.ts` | loads the analysis; builds `TrackAudioData`; lookup helpers |
 | `src/track-structure.ts` | finds the track's big moments and measures the run-in to each |
 | `src/rhythm.ts` | decodes `rhythmstring` into broadband hits |
 | `src/audio-sync.ts` | output-latency correction and the smoothed clock |
-| `src/colours.ts` | per-preset colour settings: cover palette or picked colours, what the gradient follows, the cover's colours by area |
-| `src/colour-panel.tsx` | the colour part of the knobs panel and the colour picker |
-| `src/presets/types.ts` | `PresetFrame`, `Preset`, `PresetDefinition`, `currentEnergy` |
+| `src/colours.ts` | per-preset colour settings: cover palette or picked colours, what the gradient follows, the cover's colours by area; RGB / HSL conversion |
+| `src/presets/types.ts` | `PresetFrame`, `Preset`, `PresetDefinition`, `currentEnergy`, `publishDiagnostics` |
 | `src/presets/index.ts` | `PRESETS`, the list the UI shows |
-| `src/presets/flowfield-common.ts` | the Conductor, album-colour helpers, dev hooks |
-| `src/presets/effects.ts` | key hue, glow, shimmer tint, energy trend |
+| `src/presets/conductor.ts` | the Conductor |
+| `src/presets/effects.ts` | key hue, glow, shimmer tint |
 | `src/presets/next-sound.ts` | the next sound's properties, for Drift |
 | `src/presets/tune.ts` | live knobs |
 | `src/presets/ridge.ts`, `layers3d.ts` | the two presets |
 
 ## Loading the analysis
 
-`loadTrackAudioData(uri)` in `audio-data.ts` tries `Spicetify.getAudioData` and then fetches the endpoint itself (DATA.md section 1 says why). It returns a `TrackAudioData`: the arrays, a per-track-normalised loudness curve, `hitScale`, `timbreSorted`, `sectionIntensity`, `moments` and `hits`. Lookup helpers there are binary searches: `sampleCurve`, `segmentAt`, `sectionIndexAt`, `timeSinceLastBeat`, `nearestBarStart`, `rankOf`.
+`loadTrackAudioData(uri)` in `audio-data.ts` tries `Spicetify.getAudioData` and then fetches the endpoint itself (DATA.md section 1 says why). It returns a `TrackAudioData`: the arrays, a per-track-normalised loudness curve, `hitScale`, `timbreSorted`, `sectionIntensity`, `moments` and `hits`. Lookup helpers there are binary searches: `sampleCurve`, `segmentAt`, `sectionIndexAt`, `rankOf`.
 
-`app.tsx` calls it from the `songchange` handler (`updateTrack`):
+`ui/use-track-data.ts` calls it from the `songchange` handler (`updateTrack`):
 
 - one cached promise per URI, 10 s timeout, one retry after 1.2 s, at most four cached, and a prefetch of the next queued track so a natural advance has no gap;
 - `audioDataRef` is set to `null` as soon as the track changes and filled when the analysis arrives, so presets see `audio: null` in between;
 - only `spotify:track:` URIs are requested. Local files, episodes and ads never get an analysis;
 - an empty or failed analysis falls back to `audio-features` (tempo and loudness only, `trackDataFromFeatures`), and if that fails the picture runs without data. Each case shows a notification;
-- the cover colour comes from `Spicetify.extractColorPreset`; the displayed colour eases to it with a 0.6 s time constant, and stays on the last track's colour until the new one is known.
+- the cover colours come from `Spicetify.colorExtractor` (`extractColorPreset` as the fallback) and the cover's own pixels; the frame loop eases the displayed colours to them with a 0.6 s time constant, and they stay on the last track's until the new ones are known.
 
 What each preset does without data: Ridgeline has no segments to build a shape from, so its rows are flat (on the beat grid when the features fallback gave one). Drift lights no marks, because `createNextSound` has no segments to announce, and its background layers follow the conductor's fallback level.
 
 ## Structure and rhythm
 
-`track-structure.ts` exports `findMoments`. What runs is `findRises`: up to five places per track where the loudness takes its largest sustained step up, each with a `size`, a measured `leadSeconds`, and how far the music dips (`dip`) or climbs (`build`) on the way in. The older repetition-based chorus detector in the same file is switched off (`ENABLED = false`). Details and measurements are in DATA.md section 3.1.
+`track-structure.ts` exports `findMoments(curve, bars)`: up to five places per track where the loudness takes its largest sustained step up, each with a `size`, a measured `leadSeconds`, and how far the music dips (`dip`) or climbs (`build`) on the way in. Details and measurements are in DATA.md section 3.1.
 
-`rhythm.ts` exports `decodeHits` (inflate with `DecompressionStream`, parse eight bands of onset times, cluster onsets within 25 ms, keep clusters of at least three bands) and `hitIndexAt`. If inflating fails, `hits` is empty.
+`rhythm.ts` exports `decodeHits` (inflate with `DecompressionStream`, parse eight bands of onset times, cluster onsets within 25 ms, keep clusters of at least three bands). If inflating fails, `hits` is empty.
 
 ## The clock
 
@@ -63,7 +69,7 @@ What each preset does without data: Ridgeline has no segments to build a shape f
 
 ## The Conductor
 
-`createConductor()` in `flowfield-common.ts` returns a function that takes a `PresetFrame` and returns a `Conductor`: eased scalars from the audio, computed once per frame that renders. Each preset calls `createConductor()` inside its own `create()`, so state is per preset instance. The latest result is exported as `lastConducted`.
+`createConductor()` in `conductor.ts` returns a function that takes a `PresetFrame` and returns a `Conductor`: eased scalars from the audio, computed once per frame that renders. Each preset calls `createConductor()` inside its own `create()`, so state is per preset instance. The latest result is exported as `lastConducted`.
 
 `dt` is `progressSec` minus the last call, clamped to 0..0.05. Eased values follow `v += (target - v) * min(1, rate * dt)`.
 
@@ -80,14 +86,12 @@ What the two presets read (full table in DATA.md section 3.3):
 
 Between tracks the conductor holds `loudness` and `energy` near a rest level while the next analysis loads, then joins the new track's level over 1.5 s. This is what stops a track change from stepping every speed at once.
 
-`flowfield-common.ts` also exports `albumHsl`, `hslToRgb` and `publishDiagnostics` / `lastDiagnostics`.
-
 ## The preset contract
 
 `types.ts`:
 
 - `PresetFrame`: `ctx` (2D context of the visible canvas), `width`, `height` (canvas pixels), `progressSec`, `isPlaying`, `audio` (`TrackAudioData | null`), `colorRgb` (eased album colour), `palette` (the cover's dark, vibrant and light colours, eased), `coverColours` (those three, then the cover's own colours by area, six in all). There is no mouse in the frame.
-- `Preset`: `draw(frame)`. It is called every animation frame, playing or not. It owns whatever state it keeps.
+- `Preset`: `draw(frame)`, called every drawn animation frame, playing or not; it owns whatever state it keeps. `dispose()`, called when the preset is switched away and when the page closes, releases its canvases and GPU memory.
 - `PresetDefinition`: `id`, `name`, optional `experimental`, `create()`.
 - `currentEnergy(frame)`: loudness-curve value, a sine when there is no analysis and playing, 0.5 when paused.
 
@@ -95,16 +99,20 @@ Between tracks the conductor holds `loudness` and `energy` near a rest level whi
 
 Rules every preset follows:
 
-- A paused frame must not advance anything. Ridgeline draws once and then only when something it shows changes; Drift returns at once and the canvas keeps its last frame. `check-presets.js` asserts a paused frame issues byte-identical canvas calls.
-- Shared logic goes in `flowfield-common.ts` or `effects.ts`, not into a preset.
+- A paused frame must not advance anything. Both presets draw once and then only when something they show changes (position, size, a knob, a colour). `check-presets.js` asserts a paused frame issues byte-identical canvas calls.
+- Shared logic goes in `conductor.ts` or `effects.ts`, not into a preset.
 - Time constants are per second or in beats of the track, never per frame.
 - Knobs are declared once at module scope with `tune()`.
 
-## app.tsx
+## The shell (app.tsx and ui/)
 
-Frame loop. `render` builds a `PresetFrame` and calls `preset.draw` in a try/catch (a failure is logged once and the next frame tries again), then schedules itself with `requestAnimationFrame` of the window the canvas is currently in. The 2D context is `{ alpha: false }`. `resize` follows the canvas box (window resize and a `ResizeObserver`); while paused it carries the old picture over, stretched, because setting a canvas size clears it.
+`app.tsx` holds the preset choice and the window state and lays out the page; the rest is in `src/ui/`. The analysis, the cover colours and the preset live in refs that only the frame loop reads, so React re-renders only for what is on screen: the 500 ms progress tick re-renders `TrackOverlay` alone.
 
-Preset switching. The chosen id is kept in `localStorage` under `vivy:preset`. On change, an effect calls the new preset's `create()` and clears the 2D canvas. The preset buttons in the top bar come from `PRESETS`; experimental ones get an "exp" tag.
+Frame loop (`use-frame-loop.ts`). `render` builds a `PresetFrame` and calls `preset.draw` in a try/catch (a failure is logged once and the next frame tries again), then schedules itself with `requestAnimationFrame` of the window the canvas is currently in. The 2D context is `{ alpha: false }`. `resize` follows the canvas box (window resize and a `ResizeObserver`); while paused it carries the old picture over, stretched, because setting a canvas size clears it. On unmount the canvas is set to 0x0 so its backing store is freed at once.
+
+Frame rate (`frame-rate.ts`). 30, 60, 120 or 0 (every frame the monitor gives, the default), in the knobs panel under More settings, stored under `vivy:fps`. `createFramePacer` skips animation frames on a schedule that advances by whole intervals, with 1 ms of slack for rAF jitter, so 60 on a 240 Hz monitor is every fourth frame. Presets move by the clock, so a cap changes smoothness, not speed.
+
+Preset switching. The chosen id is kept in `localStorage` under `vivy:preset`. A click disposes the old preset, creates the new one and clears the 2D canvas. The preset buttons in the top bar come from `PRESETS`; experimental ones get an "exp" tag.
 
 Input. The canvas takes no mouse input. Keys, all ignored with ctrl, alt or meta held and inside text inputs:
 
@@ -113,16 +121,16 @@ Input. The canvas takes no mouse input. Keys, all ignored with ctrl, alt or meta
 | `F` | fullscreen on the container |
 | `P` | mini window |
 | `T` | knobs panel |
-| `1`-`9` | dispatches a `visualizer-feature` event with the stored preset id and the number; Ridgeline listens |
+| `1`-`9` | dispatches a `visualizer-feature` event with the current preset id and the number; Ridgeline listens |
 | `B` | dev builds only: POSTs the numeric fields of `lastConducted`, track and position to the dev server's `/mark` |
 
 The top bar and the track overlay hide after 2.5 s without mouse activity. The progress readout updates every 500 ms.
 
-Mini window. `documentPictureInPicture.requestWindow` opens an always-on-top window. The canvas element itself is moved into it, so the preset draws at that window's size, and the frame loop switches to that window's `requestAnimationFrame` (a window nobody can see gets no frames). The client gives the window no frame, so it is moved with a `-webkit-app-region: drag` layer over the picture (all but a 10 px rim) and sized with `resizeTo`: wheel, `+` / `-`, or corner buttons that fade after 2.5 s of inactivity. `Esc` closes it. Other keys are forwarded to the main window. Size and position are kept under `vivy:pip-place`. On `pagehide` the canvas is moved back and the main loop resumes. A game in exclusive fullscreen owns the screen and cannot be drawn over.
+Mini window (`mini-window.ts`). `documentPictureInPicture.requestWindow` opens an always-on-top window. The canvas element itself is moved into it, so the preset draws at that window's size, and the frame loop switches to that window's `requestAnimationFrame` (a window nobody can see gets no frames). The client gives the window no frame, so it is moved with a `-webkit-app-region: drag` layer over the picture (all but a 10 px rim) and sized with `resizeTo`: wheel, `+` / `-`, or corner buttons that fade after 2.5 s of inactivity. `Esc` closes it. Other keys are forwarded to the main window. Size and position are kept under `vivy:pip-place`. On `pagehide` the canvas is moved back and the main loop resumes. A game in exclusive fullscreen owns the screen and cannot be drawn over.
 
-Knobs panel (`TunePanel`). Lists the current preset's feature switches and sliders, grouped. Double-click a label to reset one knob; Reset resets all; Copy puts the moved ones on the clipboard as `preset KEY = value (was default)` lines, to be written back into the code as new defaults.
+Knobs panel (`tune-panel.tsx`). Lists the current preset's feature switches and sliders, grouped, and the frame rate under More settings. Double-click a label to reset one knob; Reset resets all; Copy puts the moved ones on the clipboard as `preset KEY = value (was default)` lines, to be written back into the code as new defaults.
 
-Dev builds (`stamp.js` without `--release`) also show the build time, report the grid and canvas size, and POST each analysis to the dev server's `/dump`. A release build sets `DEV = false` and none of that runs.
+Dev builds (`stamp.js` without `--release`) also show the build time and canvas size, and POST each analysis to the dev server's `/dump` (`dev.ts`). A release build sets `DEV = false` and none of that runs.
 
 ## tune.ts
 
@@ -136,11 +144,11 @@ Hints. `tune()` takes a third argument of one-sentence descriptions; hovering a 
 
 ## Colours
 
-Each preset declares its gradients once, at module scope, with `colourSettings(preset, gradients)` in `colours.ts`, the way it declares knobs. The returned object is live: the colour section of the panel (`colour-panel.tsx`) writes `mode`, `stops`, `follows` and `harmony` into it and the next frame reads them.
+Each preset declares its gradients once, at module scope, with `colourSettings(preset, gradients)` in `colours.ts`, the way it declares knobs. The returned object is live: the colour section of the panel (`ui/colour-panel.tsx`) writes `mode`, `stops`, `follows` and `harmony` into it and the next frame reads them.
 
 - Source. `cover` uses the cover's palette; `custom` uses two or three colours picked in the panel. `palette()` turns either into HSL stops, keeping the cover's three in separate bands of lightness and picked colours off pure black and white. `harmony` (0..1) scales how far the section's key turns the hue.
 - What the gradient follows (`follows`). Ridgeline: `height` (a row's loudness), `depth` (far to near), `sound` (the music's loudness now). Drift: `layers` (haze, hairlines and marks one colour each), `depth`, `sounds` (each mark by how ringing its sound was), `music` (everything slides with loudness). `paletteAt()` reads a point along the stops.
-- Cover colours. Spotify's extraction gives dark, vibrant and light colours. Drift also reads the cover's pixels: `app.tsx` draws the cover into a 48 px canvas and `coverHues()` groups the coloured pixels by hue; every hue group covering at least 10% of the coloured area becomes a colour (up to three; `distinctCover()` orders them dark to light). A cover with fewer than two such groups falls back to the extracted shades (`distinctCover()`).
+- Cover colours. Spotify's extraction gives dark, vibrant and light colours. Drift also reads the cover's pixels: `ui/use-track-data.ts` draws the cover into a 48 px canvas and `coverHues()` groups the coloured pixels by hue; every hue group covering at least 10% of the coloured area becomes a colour (up to three; `distinctCover()` orders them dark to light). A cover with fewer than two such groups falls back to the extracted shades (`distinctCover()`).
 - Storage. Settings are kept per preset in `localStorage` under `vivy:colours:<preset>`.
 
 ## Ridgeline (`ridge.ts`)
@@ -198,7 +206,7 @@ Colour. Album hue plus `keyHue`; three layer colours from it; `shimmerTint` shif
 Rendering. WebGL into an offscreen canvas (`alpha: false`, additive blending, so a ribbon over a ribbon is brighter), a ribbon shader and a head shader. The result is composited onto the frame's 2D context with `drawImage`, then `createGlow` adds the halo (strength `0.4 + tintPulse * 0.35 + release * 0.9`). WebGL is used because the 2D canvas cannot stroke ten thousand segments at 144 Hz.
 
 WebGL handling.
-- One renderer per page (`sharedRenderer`). `create()` reruns on every preset switch and a browser keeps only about sixteen contexts, so a context per switch would end with the oldest dropped and Drift black.
+- One context per preset instance, released with `WEBGL_lose_context` in `dispose()`. A browser keeps only about sixteen contexts, so contexts that are never released end with the oldest dropped and Drift black.
 - No WebGL (headless check, or switched off in the client) or a shader that will not compile: the renderer is `null`, a notification says Drift needs WebGL, and the simulation still runs so its numbers are still checked.
 - A lost context (GPU reset, driver update, sleep): each frame checks `isContextLost()`, drops the renderer and asks for a new one every 2 s until it comes. Everything made in the old context goes with it, so a whole new renderer is made.
 - `publishDiagnostics("layers3d", { checksum, cameraX, cameraZ, heads })` each frame lets `check-presets.js` catch a NaN in geometry that no GPU would show.
@@ -215,7 +223,7 @@ WebGL handling.
 
 `stamp.js` writes `src/build-stamp.ts` (`BUILD` time and `DEV`). It is generated and ignored by git. A client reads `index.js` once at startup, so the stamp is how to tell a change that failed from one that never loaded.
 
-`check-presets.js` compiles `src/presets/index.ts`, `colours.ts` and `audio-sync.ts` with `tsc` into `node_modules/.cache/preset-check` and drives every preset against a fake 2D context that throws on a non-finite number, a colour channel outside 0..255, a negative alpha, a non-positive line width or a negative arc radius. It runs each preset with a synthetic analysis and with `audio: null`: 400 frames at 60 fps, a seek back 40 s, then paused frames that must produce byte-identical call logs. Then every knob at its minimum and at its maximum for 200 frames. Then every colour source with every gradient, and `coverHues` on synthetic covers. Then the between-tracks level (never climbs while waiting, never steps by 0.02 in a frame) and the smooth clock (frame steps within 3%, within 2 ms of the player, a seek taken at once). It prints warnings for alpha above 1. It cannot see GPU output.
+`check-presets.js` compiles `src/presets/index.ts`, `colours.ts`, `audio-sync.ts` and `frame-rate.ts` with `tsc` into `node_modules/.cache/preset-check` and drives every preset against a fake 2D context that throws on a non-finite number, a colour channel outside 0..255, a negative alpha, a non-positive line width or a negative arc radius. It runs each preset with a synthetic analysis and with `audio: null`: 400 frames at 60 fps, a seek back 40 s, then paused frames that must produce byte-identical call logs. Then every knob at its minimum and at its maximum for 200 frames. Then every colour source with every gradient, and `coverHues` on synthetic covers. Then the between-tracks level (never climbs while waiting, never steps by 0.02 in a frame) the smooth clock (frame steps within 3%, within 2 ms of the player, a seek taken at once) and the frame rate cap (each cap draws its own rate at 240 Hz with jitter). It prints warnings for alpha above 1. It cannot see GPU output.
 
 CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck` and `npm run check` on Node 20 for every pull request and every push to `main`. The release workflow runs on a tag like `v0.1.1`: the same checks, `npm run release`, zips `index.js`, `manifest.json` and `style.css` into a `vivy` folder as `vivy.zip` and attaches it to a GitHub release.
 
