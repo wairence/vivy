@@ -1,14 +1,7 @@
 // ---- live knobs -----------------------------------------------------------------------------------------
-// A preset's numbers, turned while the music plays (T in the client opens the panel). Changing a
-// constant otherwise means build, apply, restart Spotify and find the place in the song again; a
-// slider takes a second, and the value that looks right is copied out of the panel and written back
-// into the code as the new default.
-//
-// A preset declares its knobs once, at module scope:
-//     const K = tune("ridge", { HORIZON: [0.3, 0.1, 0.5, "horizon height", "view"], ... });
-// and reads `K.HORIZON` where it read `HORIZON`. The object IS the live value: the panel writes into
-// it, the next frame reads it. A value moved off its default is kept across restarts - but only while
-// the code's default is still the one it was moved from, so a default changed in code wins.
+// A preset's numbers, turned while the music plays (T in the client opens the panel); the value that looks right is pasted back as the new default.
+// Declared once at module scope: const K = tune("ridge", { HORIZON: [0.3, 0.1, 0.5, "horizon height", "view"], ... });
+// `K` is the live value object. A moved value is kept across restarts only while the code's default is the one it was moved from.
 export type KnobSpec = readonly [def: number, min: number, max: number, label: string, group?: string];
 // `basic`: one of the few shown by default; the rest wait behind "More"
 export type Knob = { key: string; def: number; min: number; max: number; label: string; group: string; hint: string; basic: boolean };
@@ -59,8 +52,7 @@ export function tune<T extends Record<string, KnobSpec>>(
 		group = g ?? group;
 		const s = saved[key];
 		const kept = Array.isArray(s) && s[1] === def && Number.isFinite(s[0]);
-		// moved from a default the code no longer has: forgotten now, or it would come back the day the
-		// default happens to return to what it was
+		// moved from a default the code no longer has: forgotten, or it returns when the default does
 		if (s !== undefined && !kept) stale = true;
 		values[key] = kept ? Math.min(max, Math.max(min, s[0])) : def;
 		knobs.push({ key, def, min, max, label, group, hint: hints[key] ?? "", basic: !basic || basic.includes(key) });

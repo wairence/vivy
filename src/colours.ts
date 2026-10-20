@@ -1,19 +1,10 @@
-// ---- the colours --------------------------------------------------------------------------------------------
-// Each preset has its own colour settings, set in the knobs panel and kept across restarts:
-//   cover    the cover's own palette, three colours Spotify extracts from the art (dark, vibrant, light)
-//   custom   two or three colours picked in the panel
-// and what moves a colour along that palette - the gradient. What a gradient can follow depends on what
-// the preset is made of, so each preset names its own (Ridgeline: the height of a ridge, its depth, the
-// sound; Drift: its layers, depth, the sound of each mark, the music). `harmony` is how far the key of
-// each section turns the hue (0 keeps the colours exactly as picked).
-//
-// A preset declares its gradients once, at module scope, as it declares its knobs:
-//     const COLOURS = colourSettings("ridge", [["height", "Height", "what it does"], ...]);
-// and reads COLOURS.follows / COLOURS.mode, which the panel changes under it.
-import { Hsl, rgbToHsl } from "./presets/flowfield-common";
+// Per-preset colour settings (knobs panel, kept across restarts): `cover` palette from the art or `custom` picked colours,
+// the gradient the colour follows (named by each preset), and `harmony`, how far each section's key turns the hue (0 = as picked).
+// Usage, at module scope: const COLOURS = colourSettings("ridge", [["height", "Height", "what it does"], ...]); read COLOURS.follows / .mode.
 import { bumpTune } from "./presets/tune";
 
 export type Rgb = { r: number; g: number; b: number };
+export type Hsl = { h: number; s: number; l: number };
 export type ColourMode = "cover" | "custom";
 export type Gradient = readonly [id: string, name: string, what: string];
 export type Colours = { mode: ColourMode; stops: string[]; follows: string; harmony: number };
@@ -67,17 +58,18 @@ export const hexToRgb = (hex: string): Rgb => {
 export const rgbToHex = ({ r, g, b }: Rgb) =>
 	"#" + [r, g, b].map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
 
-// The palette a preset draws with this frame, as HSL stops, first to last.
-// The cover's three colours each keep their place in a band of lightness, dark to light, with enough
-// colour to read. Pulled all into one band, three different
-// colours come out as one, and a gradient between them is no gradient.
-// Picked colours are kept as picked, only kept off pure black and white, where there is no light left
-// to shape anything with.
+// The palette a preset draws with this frame, as HSL stops. Cover colours keep their own band of lightness (pulled into one
+// band they collapse into a single colour); picked colours are kept as picked, only off pure black and white.
 const COVER_BANDS = [
 	[0.3, 0.44],
 	[0.46, 0.58],
 	[0.6, 0.74]
 ];
+const coverStop = (c: Hsl, [lo, hi]: number[]): Hsl => ({
+	h: c.h,
+	s: Math.max(0.45, Math.min(0.95, c.s)),
+	l: Math.max(lo, Math.min(hi, c.l))
+});
 export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 	if (colours.mode === "custom") {
 		return colours.stops.map(hex => {
@@ -85,21 +77,13 @@ export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 			return { h: c.h, s: c.s, l: Math.max(0.18, Math.min(0.82, c.l)) };
 		});
 	}
-	return cover.map((rgb, i) => {
-		const c = rgbToHsl(rgb);
-		const [lo, hi] = cover.length === 1 ? [0.45, 0.66] : COVER_BANDS[Math.round((i / (cover.length - 1)) * 2)];
-		return { h: c.h, s: Math.max(0.45, Math.min(0.95, c.s)), l: Math.max(lo, Math.min(hi, c.l)) };
-	});
+	return cover.map((rgb, i) =>
+		coverStop(rgbToHsl(rgb), cover.length === 1 ? [0.45, 0.66] : COVER_BANDS[Math.round((i / (cover.length - 1)) * 2)])
+	);
 }
 
-// The cover's own colours, by area, for a preset whose light adds up on black (Drift): there a
-// difference in lightness hardly reads - a brighter stroke just looks nearer - and the dark, vibrant
-// and light colour Spotify extracts are often three shades of one hue. So the cover itself is looked
-// at: its coloured pixels, grouped by hue, and every group that covers a real part of the coloured
-// area is a colour of the palette, dark to light. A speck of another colour (a red badge on a blue
-// cover, 4% of it) is not a colour of that cover: blended into the gradient it would turn blue to
-// purple to red. A cover with one such group, or none, gives [] - it is of one colour,
-// and the extracted shades of it are used.
+// The cover's own colours by area, for Drift, where light adds up on black and lightness hardly reads: pixel hues are grouped
+// and groups covering a real share of the coloured area become the palette. Fewer than two such groups gives [].
 const SHARE = 0.1;
 export function coverHues(px: Uint8ClampedArray): Rgb[] {
 	const BINS = 36;
@@ -149,10 +133,7 @@ export function coverHues(px: Uint8ClampedArray): Rgb[] {
 export function distinctCover(colours: Colours, cover: Rgb[]): Hsl[] {
 	if (colours.mode === "custom" || cover.length < 6) return palette(colours, cover.slice(0, 3));
 	const picked = cover.slice(3, 6).map(rgbToHsl).sort((a, b) => a.l - b.l);
-	return picked.map((c, i) => {
-		const [lo, hi] = COVER_BANDS[i];
-		return { h: c.h, s: Math.max(0.45, Math.min(0.95, c.s)), l: Math.max(lo, Math.min(hi, c.l)) };
-	});
+	return picked.map((c, i) => coverStop(c, COVER_BANDS[i]));
 }
 
 // a point along the palette, 0 = the first colour, 1 = the last; hue the short way round
@@ -167,6 +148,43 @@ export function paletteAt(p: Hsl[], t: number): Hsl {
 	if (dh > 0.5) dh -= 1;
 	else if (dh < -0.5) dh += 1;
 	// a grey stop has no hue of its own: take the other one's, or a fade to grey swings round the wheel
-	const h = a.s < 0.05 ? b.h : b.s < 0.05 ? a.h : a.h + dh * f;
+	let h = a.h + dh * f;
+	if (a.s < 0.05) h = b.h;
+	else if (b.s < 0.05) h = a.h;
 	return { h, s: a.s + (b.s - a.s) * f, l: a.l + (b.l - a.l) * f };
+}
+
+export function rgbToHsl({ r, g, b }: Rgb): Hsl {
+	const rn = r / 255;
+	const gn = g / 255;
+	const bn = b / 255;
+	const max = Math.max(rn, gn, bn);
+	const min = Math.min(rn, gn, bn);
+	const d = max - min;
+	const l = (max + min) / 2;
+	let h = 0;
+	if (d > 1e-6) {
+		if (max === rn) h = ((gn - bn) / d) % 6;
+		else if (max === gn) h = (bn - rn) / d + 2;
+		else h = (rn - gn) / d + 4;
+		h = (((h / 6) % 1) + 1) % 1;
+	}
+	return { h, s: d < 1e-6 ? 0 : d / (1 - Math.abs(2 * l - 1)), l };
+}
+
+export function hslToRgb(h: number, s: number, l: number): Rgb {
+	const hue = (((h % 1) + 1) % 1) * 6;
+	const c = (1 - Math.abs(2 * l - 1)) * s;
+	const x = c * (1 - Math.abs((hue % 2) - 1));
+	const m = l - c / 2;
+	let rgb: number[];
+	switch (Math.floor(hue) % 6) {
+		case 0: rgb = [c, x, 0]; break;
+		case 1: rgb = [x, c, 0]; break;
+		case 2: rgb = [0, c, x]; break;
+		case 3: rgb = [0, x, c]; break;
+		case 4: rgb = [x, 0, c]; break;
+		default: rgb = [c, 0, x];
+	}
+	return { r: Math.round((rgb[0] + m) * 255), g: Math.round((rgb[1] + m) * 255), b: Math.round((rgb[2] + m) * 255) };
 }

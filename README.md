@@ -22,6 +22,8 @@ Press `T` for the settings of the preset on screen. The main ones are shown firs
 
 Colours: *Cover* takes them from the album art, *Custom* lets you pick two or three of your own. *Gradient follows* sets what moves a colour from the first to the last, for example the height of the mountains or how loud the music is. Each preset keeps its own colours.
 
+Frame rate, under *More settings*: 30, 60, 120 or *Monitor* (every frame the screen shows, the default). A lower rate takes load off the graphics card on a fast monitor; the motion keeps its speed and only gets less smooth.
+
 ## Install
 
 vivy needs [Spicetify](https://spicetify.app). If you don't have it, install it first using their [getting started guide](https://spicetify.app/docs/getting-started), and check that Spotify starts with it.

@@ -1,47 +1,30 @@
-// Drift. Three layers on one wind, one mark per sound lit before the sound, a mark combing the
-// field it passes through - in a real volume, drawn by a real camera. Faking depth on the flat
-// picture (a slab that swung, a parallax orbit) could not be seen at all, so the particles live in
-// three dimensions and their trails are ribbons in space, redrawn from the camera's place every
-// frame.
+// Drift: three layers on one wind plus one mark per sound, lit before the sound. Ribbons are redrawn
+// from the camera every frame in WebGL (the 2D canvas cannot stroke ten thousand segments at 144 Hz).
 //
-//   the cloud    a sphere of strokes. The camera sits inside it and orbits its centre, so near
-//                strokes sweep one way and far ones the other - parallax, which is what depth is.
-//   the ground   wide dim ribbons, ~8 s life. The loudness of the last ten seconds.
-//   the sheet    hairlines, ~3 s life. The loudness now.
-//   the marks    one per sound, placed where the camera can see it, shaped by that sound.
-//
-// The rules: one wind and bounded offsets from it, geometry never steps, the only coupling is a
-// mark's wake, time in beats of the track.
-//
-// Drawn with WebGL into its own canvas and composited onto the frame's 2D context, because a trail
-// that is a ribbon in space has to be redrawn whole every frame - ten thousand segments, which the
-// 2D canvas cannot stroke at 144 Hz.
+//   the cloud    a sphere of strokes; the camera sits inside it and orbits its centre
+//   the ground   wide dim ribbons, ~8 s life: the loudness of the last ten seconds
+//   the sheet    hairlines, ~3 s life: the loudness now
+//   the marks    one per sound, shaped by that sound
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
-import { createConductor, Hsl, hslToRgb, publishDiagnostics } from "./flowfield-common";
-import { colourSettings, distinctCover, palette, paletteAt } from "../colours";
+import { createConductor } from "./conductor";
+import { colourSettings, distinctCover, Hsl, hslToRgb, palette, paletteAt, Rgb } from "../colours";
 import { createNextSound } from "./next-sound";
-import { Preset, PresetDefinition } from "./types";
+import { Preset, PresetDefinition, publishDiagnostics } from "./types";
 import { tune, tuneVersion } from "./tune";
 
 // ---- the scene, in world units -----------------------------------------------------------------------
-// the cloud's radius, and how far inside its surface a stroke starts to fade before it is recycled
 const CLOUD = 2.496;
 const CLOUD_EDGE = 0.3849;
-// the camera: how far from the centre it orbits, how high it sways, and its vertical field of view
 const ORBIT_RADIUS = 1.23;
 const ORBIT_SWAY = 0.4;
-// It does not stare at the centre: the point it looks at wanders this far about the middle of the
-// cloud (and the orbit breathes in and out), or the middle of the picture is a fixed, distant pole
-// with everything turning round it
+// the point the camera looks at wanders this far about the middle of the cloud
 const LOOK_WANDER = 0.4;
 const FOCAL = 1.458; // 1 / tan(fov / 2), ~66 degrees
 // the orbit's speed, rad/s: at rest, and per unit of loudness. A turn every ~40 s at a normal level
 const ORBIT_REST = 0.0425;
 const ORBIT_LOUD = 0.315;
-// a stroke dissolves before it reaches the lens, and into the distance
-// (projection is clamped at NEAR; light is already zero by NEAR_DARK, well short of it, so no visible
-// point is ever joined to one whose place on screen is the clamp's)
+// projection is clamped at NEAR; light is zero by NEAR_DARK, so no visible point joins a clamped one
 const NEAR = 0.1;
 const NEAR_DARK = 0.2076;
 const NEAR_CLEAR = 0.731;
@@ -52,41 +35,30 @@ const FOG_END = 3.588;
 const GROUND_COUNT = 520;
 const SHEET_COUNT = 1000;
 const MARK_POOL = 220;
-// points in every ribbon, and how long each layer's ribbon is in seconds
+// points in every ribbon, of which the first two are its rounded nose
 const TRAIL = 12;
-// ...of which the first two are its nose: a ribbon's leading end is rounded off, not cut square
 const TAIL = TRAIL - 2;
-// places remembered per particle: one more than is drawn, so every drawn point can sit at an exact
-// age between two remembered ones (see `ribbon`)
+// one more place than is drawn, so each drawn point can sit at an exact age between two (see `ribbon`)
 const RING = TRAIL + 1;
 const GROUND_TRAIL = 1.292;
 const SHEET_TRAIL = 0.4625;
 const MARK_TRAIL = 0.3465;
 
 // ---- the wind, and the flow around it ------------------------------------------------------------------
-// The flow is curl noise (Bridson 2007): the curl of a noise potential, which has no sources and no
-// sinks. A "wind plus two noise offsets" field is not that - it herds strokes into ropes and leaves
-// holes, which a 2D trail hides and a volume does not. How far off the wind the flow may
-// carry a stroke is bounded, so nothing ever flies backwards.
+// curl noise (Bridson 2007): no sources or sinks; bounded off the wind so nothing flies backwards
 const FLOW_MAX = 0.6496;
 // how hard the flow carries a mark off the wind (the ground's and the sheet's are the background's)
 const MARK_SPREAD_MAX = 1.5;
-// a stroke's place in the flow is re-read every this many frames (staggered across the population),
-// and its momentum carries it between - nine noise reads a stroke would otherwise be most of a frame
+// a stroke re-reads the flow every this many frames, staggered across the population
 const FLOW_EVERY = 4;
-// Inertia: how long a stroke takes to come round to what the flow asks of it, seconds. A heading
-// recomputed from nothing every frame cannot be seen in a 2D trail a tenth of a second long, but a
-// ribbon here is the last half second or more of the path, laid out in space - every change of
-// mind is drawn. Without inertia the sheet reverses its turn 0.82 times a second in unison and the
-// marks turn at up to 0.86 rad/s.
+// seconds a stroke takes to come round to what the flow asks of it
 const GROUND_INERTIA = 1.62;
 const SHEET_INERTIA = 1.067;
 const MARK_INERTIA = 0.8696;
 
 // ---- the wake ---------------------------------------------------------------------------------------------
-// how far a mark reaches into the field around it, world units; how far the field turns into its
-// heading (as a bounded offset from the wind, never a blend of two directions) and how fast that
-// offset may change; how much the field hurries
+// reach of a mark into the field, world units; how far the field turns into the mark's heading and
+// how fast that offset may change; how much the field hurries
 const CUT_RADIUS = 0.7279;
 const WAKE_TURN = 0.5925;
 const WAKE_RATE = 0.9575;
@@ -96,14 +68,10 @@ const WAKE_HURRY = 0.9225;
 const MARK_BASE_SPEED = 0.2625;
 const FLING = 0.7949;
 const FLING_RANK = 1.403;
-// how near the camera a mark may be born, and how far
 const MARK_NEAR = 0.6;
 const MARK_FAR = 2.7;
-// A near mark flies in from off screen. Lit where it stands, a big near mark is a thing appearing in
-// mid-air; so the nearer ones (this far along the near-far axis, and nearer) start just past the edge
-// of the picture, upwind of the place their sound belongs, and are carried in across it as they
-// light. The far ones are small enough to come up where they are - and a sky where everything enters
-// from one side would be a pattern of its own. The margin is in half-heights of the screen.
+// marks nearer than this (fraction of the near-far axis) fly in from off screen; the margin is in
+// half-heights of the screen
 const FLY_IN_NEARER = 0.4775;
 const FLY_IN_MARGIN = 0.04;
 
@@ -111,14 +79,11 @@ const FLY_IN_MARGIN = 0.04;
 const GROUND_ALPHA_CAP = 0.75;
 const SHEET_ALPHA_CAP = 0.9;
 const MARK_ALPHA_CAP = 0.95;
-// a mark's star is never bigger than this, as a fraction of the screen's height
 const MAX_STAR = 0.065;
-// ribbon half-widths, world units
 const GROUND_WIDTH = 0.005862;
 const SHEET_WIDTH = 0.003571;
 const MARK_WIDTH = 0.004;
-// no ribbon is drawn wider than this, as a fraction of the screen's height: perspective alone makes a
-// stroke near the lens a flat band across the picture, which reads as paper, not as light
+// widest any ribbon is drawn, as a fraction of the screen's height
 const MAX_HALF_WIDTH = 0.004117;
 // live knobs (T in the client): every one starts at the constant above and is read each frame
 const K = tune("layers3d", {
@@ -163,7 +128,6 @@ const K = tune("layers3d", {
 	MAX_HALF_WIDTH: [MAX_HALF_WIDTH, 0.001, 0.03, "no ribbon wider than"],
 	GLOW: [1, 0, 2.5, "halo strength", "look"]
 	},
-	// what each one does, shown beside the panel on hover
 	{
 		ORBIT_RADIUS: "How far the viewpoint is from the middle of the cloud as it circles. Higher pulls out and shows more of the cloud; lower goes deep inside.",
 		ORBIT_SWAY: "How far the viewpoint drifts up and down while it circles. Higher gives a bigger, slower rise and fall.",
@@ -206,12 +170,8 @@ const K = tune("layers3d", {
 		MAX_HALF_WIDTH: "Widest any ribbon may look on screen, however close. Lower stops close strokes turning into broad bands.",
 		GLOW: "The soft halo around the light. Zero is clean and sharp; higher blooms every mark into a cloud."
 	},
-	// shown without "More"; the rest is for whoever wants to dig
 	["FOCAL", "ORBIT_REST", "ORBIT_LOUD", "CLOUD", "MARK_TRAIL", "FLOW_MAX", "MAX_STAR", "GLOW"]
 );
-
-
-type Rgb = { r: number; g: number; b: number };
 
 type Particle = {
 	x: number;
@@ -219,28 +179,21 @@ type Particle = {
 	z: number;
 	life: number;
 	brightness: number;
-	// its own speed, fixed for life: variety lives in the population. Without it every hairline is
-	// the same length going the same way, which is a hatching and not a flow
 	pace: number;
-	// how much a passing mark is lighting it, eased
 	lit: number;
-	// the wake it sits in, eased, and how far its heading is pulled into it - a stored offset under a rate cap
 	wx: number;
 	wy: number;
 	wz: number;
-	// the way it is flying, in units of its layer's speed: it comes round to what the flow asks, and is
-	// never set to it. All zero = it has just been put somewhere and takes the flow as it finds it
+	// its heading in units of its layer's speed; all zero means just placed
 	hx: number;
 	hy: number;
 	hz: number;
-	// what the flow last asked of it here, off the wind (re-read every FLOW_EVERY frames)
 	gx: number;
 	gy: number;
 	gz: number;
 	tx: number;
 	ty: number;
 	tz: number;
-	// what it is drawn with this frame
 	alpha: number;
 };
 
@@ -263,10 +216,8 @@ type Mark = Particle & {
 	vy: number;
 };
 
-// one layer's ribbons: the last TRAIL places of every particle, in world space, as a ring
 type Trail = { points: Float32Array; head: number; clock: number; step: number };
 
-// what the gradient can follow here (see colours.ts and the colour block in draw)
 const COLOURS = colourSettings("layers3d", [
 	["layers", "Layers", "The haze, the hairlines and the marks take one colour each, first to last"],
 	["depth", "Depth", "Far away takes the first colour, up close the last"],
@@ -274,7 +225,10 @@ const COLOURS = colourSettings("layers3d", [
 	["music", "Music", "Everything slides along the colours with how loud the music is"]
 ]);
 
-const smoothstep = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const smoothstep = (t: number) => {
+	const u = Math.max(0, Math.min(1, t));
+	return u * u * (3 - 2 * u);
+};
 const shortest = (d: number) => ((d + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
 
 const RIBBON_VS = `
@@ -292,7 +246,6 @@ void main() {
 	v_tone = a_tone;
 	gl_Position = vec4(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0, 0.0, 1.0);
 }`;
-// soft across its width, so a ribbon has no hard edge at any size
 const RIBBON_FS = `
 precision mediump float;
 uniform vec3 u_color;
@@ -344,11 +297,11 @@ type Renderer = {
 	canvas: HTMLCanvasElement;
 	// a GPU reset, a driver update, sleep: the context goes, and everything made in it with it
 	lost: () => boolean;
+	dispose: () => void;
 	draw: (width: number, height: number, layers: { verts: Float32Array; count: number; rgb: Rgb; near: Rgb }[], heads: Float32Array, headCount: number, headRgb: Rgb, headNear: Rgb) => void;
 };
 
-// null wherever there is no WebGL - the headless check harness, or a client with it switched off. The
-// simulation and the geometry still run there, so their numbers are still checked.
+// null without WebGL (headless check, or switched off); the simulation still runs so its numbers are checked
 function createRenderer(maxParticles: number): Renderer | null {
 	if (typeof document === "undefined") return null;
 	const canvas = document.createElement("canvas");
@@ -374,7 +327,6 @@ function createRenderer(maxParticles: number): Renderer | null {
 	const head = program(HEAD_VS, HEAD_FS);
 	const vbo = gl.createBuffer()!;
 
-	// every ribbon is the same strip of TRAIL points; every head the same quad
 	const ribbonIndex = new Uint16Array(maxParticles * (TRAIL - 1) * 6);
 	for (let p = 0, o = 0; p < maxParticles; p++) {
 		for (let j = 0; j < TRAIL - 1; j++) {
@@ -409,10 +361,16 @@ function createRenderer(maxParticles: number): Renderer | null {
 		gl.enableVertexAttribArray(loc);
 		gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride * 4, offset * 4);
 	};
+	const colour = (p: WebGLProgram, name: string, rgb: Rgb) =>
+		gl.uniform3f(gl.getUniformLocation(p, name), rgb.r / 255, rgb.g / 255, rgb.b / 255);
 
 	return {
 		canvas,
 		lost: () => gl.isContextLost(),
+		dispose() {
+			gl.getExtension("WEBGL_lose_context")?.loseContext();
+			canvas.width = canvas.height = 0;
+		},
 		draw(width, height, layers, heads, headCount, headRgb, headNear) {
 			if (canvas.width !== width || canvas.height !== height) {
 				canvas.width = width;
@@ -435,16 +393,16 @@ function createRenderer(maxParticles: number): Renderer | null {
 				attr(ribbon, "a_alpha", 1, 5, 2);
 				attr(ribbon, "a_side", 1, 5, 3);
 				attr(ribbon, "a_tone", 1, 5, 4);
-				gl.uniform3f(gl.getUniformLocation(ribbon, "u_color"), layer.rgb.r / 255, layer.rgb.g / 255, layer.rgb.b / 255);
-				gl.uniform3f(gl.getUniformLocation(ribbon, "u_near"), layer.near.r / 255, layer.near.g / 255, layer.near.b / 255);
+				colour(ribbon, "u_color", layer.rgb);
+				colour(ribbon, "u_near", layer.near);
 				gl.drawElements(gl.TRIANGLES, layer.count * (TRAIL - 1) * 6, gl.UNSIGNED_SHORT, 0);
 			}
 
 			if (headCount > 0) {
 				gl.useProgram(head);
 				gl.uniform2f(gl.getUniformLocation(head, "u_res"), width, height);
-				gl.uniform3f(gl.getUniformLocation(head, "u_color"), headRgb.r / 255, headRgb.g / 255, headRgb.b / 255);
-				gl.uniform3f(gl.getUniformLocation(head, "u_near"), headNear.r / 255, headNear.g / 255, headNear.b / 255);
+				colour(head, "u_color", headRgb);
+				colour(head, "u_near", headNear);
 				gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, headIbo);
 				gl.bufferData(gl.ARRAY_BUFFER, heads, gl.DYNAMIC_DRAW);
 				attr(head, "a_pos", 2, 7, 0);
@@ -458,13 +416,10 @@ function createRenderer(maxParticles: number): Renderer | null {
 	};
 }
 
-let sharedRenderer: Renderer | null | undefined;
-let rendererLost = false;
 const makeRenderer = () => {
 	try {
 		return createRenderer(Math.max(GROUND_COUNT, SHEET_COUNT, MARK_POOL));
 	} catch (err) {
-		// a shader that will not compile on this GPU: the same as no WebGL, said the same way
 		console.error("[visualizer] Drift renderer", err);
 		return null;
 	}
@@ -474,21 +429,12 @@ function create(): Preset {
 	const noise = createNoise3D();
 	const conduct = createConductor();
 	const nextSound = createNextSound();
-	// One renderer for the life of the page. create() reruns on every preset switch, and a browser
-	// keeps only about sixteen WebGL contexts alive: a context per switch would end with the oldest
-	// being dropped and this preset going black after enough switching back and forth.
-	if (sharedRenderer === undefined) sharedRenderer = makeRenderer();
-	let renderer = sharedRenderer;
-	// after a lost context: when to try for a new one
+	// one context per instance, released in dispose(): a browser keeps only about sixteen alive
+	let renderer = makeRenderer();
+	let rendererLost = false;
 	let retryAt = 0;
-	let nearDark = K.NEAR_DARK;
-	let nearK = 1;
-	let fogStart = K.FOG_START;
-	let fogK = 1;
-	// a black screen with no reason given is the worst thing this could do
 	if (!renderer && typeof Spicetify !== "undefined") Spicetify.showNotification("Drift needs WebGL, and this client has it switched off");
 
-	// a point somewhere in the cloud
 	const scatter = (p: Particle) => {
 		for (;;) {
 			p.x = (Math.random() * 2 - 1) * K.CLOUD;
@@ -528,7 +474,6 @@ function create(): Preset {
 		list.forEach((p, i) => resetTrail(t, i, p));
 		return t;
 	};
-	// a stroke that has just been put somewhere new has no tail yet
 	const resetTrail = (t: Trail, i: number, p: Particle) => {
 		for (let j = 0; j < RING; j++) {
 			const o = (i * RING + j) * 3;
@@ -549,7 +494,6 @@ function create(): Preset {
 	const glow = createGlow();
 
 	let fieldTime = 0;
-	// the wind, as two angles: a heading and a rise off the horizontal. Rate-capped, never recomputed
 	let windAz = 0;
 	let windEl = 0;
 	let duck = 0;
@@ -558,12 +502,10 @@ function create(): Preset {
 	let skySize = 0;
 	let harm = 0;
 	let cursor = 0;
-	let flash = 0;
+	let release = 0;
 	const keyHue = createKeyHue();
 	let pausedAt = "";
-	// where on the palette the music has the picture, when the colour follows the sound
 	let soundAt = 0.5;
-	// where the camera is on its orbit
 	let orbit = 0;
 	let swayClock = 0;
 	let tick = 0;
@@ -571,21 +513,18 @@ function create(): Preset {
 	return {
 		draw(frame) {
 			const { ctx, width, height, isPlaying, colorRgb, audio, progressSec } = frame;
-			// Paused: one frame, then nothing until something it shows changes - the moment (a seek), the
-			// size, a knob or a colour. Time stands still with the track (every step here is the track's own
-			// dt), so that frame is the same scene, only drawn again. Drawing nothing at all would show a
-			// colour picked while paused only on play, and a switch to Drift while paused as a black screen
+			// paused: redraw only when the moment, size, a knob or a colour changes
 			if (!isPlaying) {
 				const still = [progressSec, width, height, tuneVersion()].join("|");
 				if (still === pausedAt) return;
 				pausedAt = still;
 			} else pausedAt = "";
-			// the lens and the fog, read once a frame: per point they would be a sixth of the whole frame's work
-			nearDark = K.NEAR_DARK;
-			nearK = 1 / (K.NEAR_CLEAR - K.NEAR_DARK);
-			fogStart = K.FOG_START;
-			fogK = 1 / (K.FOG_END - K.FOG_START);
-			// a ribbon's length is a knob: the same points, spaced further apart in time
+			const nearDark = K.NEAR_DARK;
+			const nearK = 1 / (K.NEAR_CLEAR - K.NEAR_DARK);
+			const fogStart = K.FOG_START;
+			const fogK = 1 / (K.FOG_END - K.FOG_START);
+			const seenAt = (depth: number) => smoothstep((depth - nearDark) * nearK) * (1 - smoothstep((depth - fogStart) * fogK));
+			const nearTone = (depth: number) => 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark));
 			groundTrail.step = K.GROUND_TRAIL / (TAIL - 1);
 			sheetTrail.step = K.SHEET_TRAIL / (TAIL - 1);
 			markTrail.step = K.MARK_TRAIL / (TAIL - 1);
@@ -595,11 +534,10 @@ function create(): Preset {
 			slowBand += (c.loudness - slowBand) * Math.min(1, 0.1 * c.dt);
 
 			// ---- the sky ------------------------------------------------------------------------------
-			// how many marks can be seen is the background's statement; one number, read by every loop
 			const skyTarget = Math.max(8, Math.min(marks.length, marks.length * (0.35 + slowBand * 0.75)));
 			if (skySize === 0) skySize = Math.round(skyTarget);
 			else if (skyTarget >= skySize + 1) skySize++;
-			// the sky shrinks past a mark only once it has gone out - cut while lit, it would vanish on the spot
+			// shrinks only past a mark that has gone out
 			else if (skyTarget <= skySize - 1 && marks[skySize - 1].age > marks[skySize - 1].rise + marks[skySize - 1].decay * 4.5) skySize--;
 			const inSky = Math.max(8, Math.min(marks.length, skySize));
 			const cutters: Mark[] = [];
@@ -612,8 +550,7 @@ function create(): Preset {
 			// ---- the brace and the release ------------------------------------------------
 			const braceEarly = Math.max(c.anticipation, Math.min(1, c.windup * 0.8));
 			const releaseRaw = c.timeToImpact !== null && c.timeToImpact > 0 ? 0 : c.impact;
-			flash += (releaseRaw - flash) * Math.min(1, (releaseRaw > flash ? 11 : 3) * c.dt);
-			const release = flash;
+			release += (releaseRaw - release) * Math.min(1, (releaseRaw > release ? 11 : 3) * c.dt);
 			const runDip = Math.max(0.12, c.runInDip);
 			const windUp = 1 + c.windup * (0.12 + c.runInBuild * 0.9);
 			const cutGate = 1 - braceEarly * 0.5;
@@ -636,7 +573,6 @@ function create(): Preset {
 			const Px = Math.sin(orbit) * radius;
 			const Py = Math.sin(swayClock * 0.11) * K.ORBIT_SWAY;
 			const Pz = -Math.cos(orbit) * radius;
-			// forward, right, up
 			let Fx = Math.sin(swayClock * 0.05 + 1) * K.LOOK_WANDER - Px;
 			let Fy = Math.sin(swayClock * 0.083) * K.LOOK_WANDER * 0.5 - Py;
 			let Fz = Math.cos(swayClock * 0.067 + 2) * K.LOOK_WANDER - Pz;
@@ -654,8 +590,6 @@ function create(): Preset {
 			const aspect = width / height;
 
 			// ---- the wind: one direction in the world, wandering slowly on its own -----------------------------
-			// (Tying it to the camera's travel, so that the flow always crosses the picture, was rejected:
-			// the wind is the scene's, not the camera's.)
 			const windStep = (0.22 + harm * 1.5) * c.dt;
 			windAz += Math.max(-windStep, Math.min(windStep, shortest(noise(fieldTime * 0.14, 11.3, 0) * Math.PI - windAz)));
 			windEl += Math.max(-windStep * 0.5, Math.min(windStep * 0.5, noise(fieldTime * 0.11, 3.1, 7.7) * 0.5 - windEl));
@@ -673,7 +607,6 @@ function create(): Preset {
 				const X = x * freq;
 				const Y = y * freq;
 				const Z = z * freq + time;
-				// the potential is three reads of one noise, far apart; its curl is six differences
 				const a = noise(X, Y, Z);
 				const b = noise(X + 31.7, Y - 12.3, Z);
 				const d = noise(X - 17.9, Y + 41.1, Z);
@@ -688,7 +621,6 @@ function create(): Preset {
 					flowZ *= K.FLOW_MAX / l;
 				}
 			};
-			// comes round to the velocity (x, y, z) over `inertia` seconds
 			const steer = (p: Particle, x: number, y: number, z: number, inertia: number) => {
 				if (p.hx === 0 && p.hy === 0 && p.hz === 0) {
 					p.hx = x;
@@ -703,24 +635,14 @@ function create(): Preset {
 			};
 
 			// ---- colour: one family of hues, leaned by this section's key against the track's home key ----
-			// The three layers take three points along the palette (the cover's, or the picked colours):
-			// the haze its first colour, the hairlines the middle, the marks the last. With the colour
-			// following the sound, the whole family slides along it with the music.
 			const pal = frame.coverColours ? distinctCover(COLOURS, frame.coverColours) : palette(COLOURS, frame.palette ?? [colorRgb]);
-			// What the gradient follows (see COLOURS above). Each layer keeps its own lightness and the colour
-			// only says where on the palette it is:
-			//   layers   the haze the first colour, the hairlines the middle, the marks the last
-			//   depth    every stroke from the first colour where the fog begins to the last at the lens
-			//   sounds   the marks by their sound, dull the first colour and ringing the last, over the haze
-			//            and hairlines in the first and middle
-			//   music    the whole family slides along the palette with how loud the music is
-			// The music is read against the band levels live in (5th to 95th percentile over eight tracks,
-			// the same as Ridgeline's camera), not against 0..1, where it barely moved.
+			// the gradient follows COLOURS.follows; each layer keeps its own lightness, the colour only picks a place on the palette
+			// energy is rescaled to its 5th-95th percentile range (0.154-0.49), as in Ridgeline's camera
 			soundAt += (smoothstep((c.energy - 0.154) / (0.49 - 0.154)) - soundAt) * Math.min(1, c.dt / 0.8);
 			const byDepth = COLOURS.follows === "depth";
 			const bySound = COLOURS.follows === "sounds";
 			const along = (t: number) => paletteAt(pal, COLOURS.follows === "music" ? t * 0.3 + soundAt * 0.7 : t);
-			// the cover's palette is spread a little round the wheel between the layers; picked colours stay as picked
+			// cover palettes are spread a little round the wheel between layers
 			const turn = COLOURS.mode === "cover" ? 1 : 0;
 			const key = keyHue(audio, progressSec, c.dt) * COLOURS.harmony;
 			const shimmer = shimmerPhase(fieldTime);
@@ -733,7 +655,6 @@ function create(): Preset {
 			const groundNear = byDepth ? groundOf(along(1)) : groundRgb;
 			const sheetNear = byDepth ? sheetOf(along(1)) : sheetRgb;
 			const markNear = byDepth || bySound ? markOf(along(1)) : markRgb;
-
 
 			// ---- the wake: what the marks cutting through the field do to a stroke at (x, y, z) -----------------
 			const cutFall = 1 / beat;
@@ -765,14 +686,8 @@ function create(): Preset {
 
 			// ---- a ribbon: one particle's trail, from the camera's place, into a strip of vertices -----------
 			let checksum = 0;
-			// A ribbon is the particle's path resampled at fixed ages: point j is where it was exactly j steps
-			// ago, found between the two remembered places either side of that moment. Drawing the
-			// remembered places themselves jerks - a new one is taken ~17 times a second, and on that
-			// frame the strip's first segment collapses to nothing and its soft tip changes length, so
-			// every ribbon twitches at 17 Hz. Resampled, every point slides continuously.
-			// The strip's first two points are a nose in front of the particle - a half and a whole width
-			// ahead, narrowing as a circle does - so the thick end is round. (Cut square, it would hide
-			// under a mark's star only when the star is big.)
+			// the path is resampled at fixed ages: point j is where the particle was j steps ago
+			// the first two points are a rounded nose, a half and a whole width ahead of the particle
 			const maxHalf = height * K.MAX_HALF_WIDTH;
 			const ribbon = (verts: Float32Array, t: Trail, i: number, alpha: number, halfWidth: number, tone = -1) => {
 				const back = 1 - t.clock / t.step;
@@ -797,17 +712,12 @@ function create(): Preset {
 					sxs[k] = width / 2 + ((ax * Rx + az * Rz) / d) * focal;
 					sys[k] = height / 2 - ((ax * Yx + ay * Yy + az * Yz) / d) * focal;
 					const age = j / (TAIL - 1);
-					// gone before the lens and into the distance
-					const seen = smoothstep((depth - nearDark) * nearK) * (1 - smoothstep((depth - fogStart) * fogK));
-					// it narrows towards its tail, like anything drawn by something moving
+					const seen = seenAt(depth);
 					const w = Math.min(maxHalf, (halfWidth * focal) / d) * (1 - age * 0.7);
-					// a ribbon finer than a pixel is drawn a pixel wide and dimmer, not thinner
 					hws[k] = Math.max(0.6, w);
 					als[k] = alpha * seen * (1 - age) * Math.min(1, w / 0.6);
-					// how near it is, for a gradient that follows depth: 1 at the lens, 0 where the fog begins
-					tns[k] = tone >= 0 ? tone : 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark));
+					tns[k] = tone >= 0 ? tone : nearTone(depth);
 				}
-				// the nose, along the way it is going on screen (a ribbon standing still has none)
 				let nx0 = sxs[2] - sxs[3];
 				let ny0 = sys[2] - sys[3];
 				const nl = Math.hypot(nx0, ny0);
@@ -827,11 +737,9 @@ function create(): Preset {
 				hws[0] = hws[2] * 0.2;
 				als[0] = als[2];
 				tns[0] = tns[1] = tns[2];
-				// A stroke coming straight at the lens is a short fat slab on screen - "flat". It is a point
-				// of light seen end-on, so it dims as its length on screen falls under a few of its widths.
+				// a stroke seen end-on is a point of light: dim it as its screen length falls under a few widths
 				const endOn = Math.min(1, Math.hypot(sxs[2] - sxs[TRAIL - 1], sys[2] - sys[TRAIL - 1]) / (hws[2] * 6));
-				// across the strip at every point: from its neighbours, and where two of them coincide, from
-				// the nearest point that has a direction - never a zero, which pinches the strip shut
+				// strip normal: from the neighbours, else the nearest point with a direction (a zero pinches the strip shut)
 				let known = -1;
 				for (let j = 0; j < TRAIL; j++) {
 					const a = Math.max(0, j - 1);
@@ -870,8 +778,6 @@ function create(): Preset {
 					checksum += sxs[j] + sys[j] + a;
 				}
 			};
-			// every layer remembers a new place on its own clock, so a ribbon is as long in seconds on any
-			// screen; between them the newest follows the particle
 			const advance = (t: Trail, list: Particle[]) => {
 				t.clock += c.dt;
 				for (let n = 0; t.clock >= t.step && n < RING; n++) {
@@ -922,14 +828,12 @@ function create(): Preset {
 					cutAt(p.x, p.y, p.z);
 					p.lit += (cutW - p.lit) * Math.min(1, (cutW > p.lit ? 12 : cutFall) * c.dt);
 					const cut = p.lit * cutGate;
-					// where a mark is passing the flow is stirred harder - an amplitude, never a direction
 					if ((tick + i) % FLOW_EVERY === 0 || (p.gx === 0 && p.gy === 0 && p.gz === 0)) {
 						flow(p.x, p.y, p.z, freq, fieldTime * drift, spread + cut * cutStir);
 						p.gx = flowX;
 						p.gy = flowY;
 						p.gz = flowZ;
 					}
-					// the wake, eased; and the heading's pull into it - a stored offset chased under a rate cap
 					const wakeStep = Math.min(1, (cutW > 0 ? wakeRise : wakeFall) * c.dt);
 					p.wx += (cutX - p.wx) * wakeStep;
 					p.wy += (cutY - p.wy) * wakeStep;
@@ -946,7 +850,6 @@ function create(): Preset {
 					p.ty += ey * step;
 					p.tz += ez * step;
 
-					// one wind; everything else is a bounded offset from it, so nothing can flip
 					steer(p, Wx + p.gx + p.tx, Wy + p.gy + p.ty, Wz + p.gz + p.tz, inertia);
 					const v = speed * p.pace * (1 + wake * K.WAKE_HURRY * wakeHurry) * c.dt;
 					p.x += p.hx * v;
@@ -961,7 +864,6 @@ function create(): Preset {
 					);
 					p.life -= c.dt * lifeRate;
 					if (p.life <= 0 || fromCentre > K.CLOUD) {
-						// invisible by now: the bell and the edge have both taken it to zero
 						scatter(p);
 						p.life = 1;
 						p.lit = p.wx = p.wy = p.wz = p.tx = p.ty = p.tz = p.hx = p.hy = p.hz = p.gx = p.gy = p.gz = 0;
@@ -998,9 +900,6 @@ function create(): Preset {
 				K.SHEET_INERTIA,
 				0.55,
 				1,
-				// how widely it wanders is the background's statement, like the ground's: `harmonicShift`
-				// is not a rare event (its eased form sits near 0.7 all song), and as an amplitude on every
-				// heading at once it would be the rest of the sheet's wiggle
 				Math.max(0.04, (0.6 + slowBand * 0.8) * (1 - braceEarly * 0.35)),
 				0.27,
 				(0.035 + c.loudness * 0.55) * windUp,
@@ -1018,7 +917,7 @@ function create(): Preset {
 			// ---- the next sound, and the marks it lights ---------------------------------------------------------
 			const sound = nextSound(audio, progressSec, beat, c.energy);
 			const hitFling = K.FLING * (0.35 + sound.sharp * sound.sharp * 0.65) * (0.5 + sound.breadth * 0.8);
-			// "Across the wind", as the wind looks from the camera - the axis a sound's register is read along
+			// the wind as seen from the camera: the axis a sound's register is read along
 			let ax = Wx * Rx + Wz * Rz;
 			let ay = Wx * Yx + Wy * Yy + Wz * Yz;
 			const al = Math.hypot(ax, ay);
@@ -1029,7 +928,11 @@ function create(): Preset {
 				ax = 1;
 				ay = 0;
 			}
-			// puts a dark mark at a place in the picture (half-heights across and up, and a depth)
+			const toEdge = (pos: number, dir: number, edge: number) => {
+				if (dir > 1e-3) return (pos + edge) / dir;
+				if (dir < -1e-3) return (pos - edge) / dir;
+				return 1e9;
+			};
 			const place = (m: Mark, i: number, px: number, py: number, depth: number) => {
 				const ox = (px * depth) / K.FOCAL;
 				const oy = (py * depth) / K.FOCAL;
@@ -1039,10 +942,7 @@ function create(): Preset {
 				m.hx = m.hy = m.hz = m.gx = m.gy = m.gz = 0;
 				resetTrail(markTrail, i, m);
 			};
-			// Written only while it is dark: its light starts at zero and rises through a smoothstep.
-			// (Keeping the dark marks flying in the picture and lighting the nearest stops a mark appearing
-			// in mid-air, but makes the sky orderly: every mark already settled into the stream, evenly
-			// spread.)
+			// called only on a dark mark: its light starts at zero
 			const ignite = (m: Mark, i: number, lit: number, wanted: number) => {
 				m.streak = lit === 0 && sound.standout ? 1 : 0;
 				m.age = -lit * 0.014;
@@ -1073,9 +973,7 @@ function create(): Preset {
 				const near = runner ? 1 : 0.15 + r * 0.7;
 				if (near > K.FLY_IN_NEARER && al > 0.15) {
 					// back along the wind to just past the edge it would have come in over
-					const tx = ax > 1e-3 ? (px + aspect) / ax : ax < -1e-3 ? (px - aspect) / ax : 1e9;
-					const ty = ay > 1e-3 ? (py + 1) / ay : ay < -1e-3 ? (py - 1) / ay : 1e9;
-					const t = Math.min(tx, ty) + K.FLY_IN_MARGIN;
+					const t = Math.min(toEdge(px, ax, aspect), toEdge(py, ay, 1)) + K.FLY_IN_MARGIN;
 					px -= ax * t;
 					py -= ay * t;
 				}
@@ -1088,9 +986,7 @@ function create(): Preset {
 				let lit = 0;
 				for (let tries = 0; tries < inSky && lit < wanted; tries++) {
 					const i = cursor++ % inSky;
-					// only a mark that has gone out: one taken at 0.6 of its decay still has half its charge,
-					// up to full light at the cap, and vanishes in one frame (55 a minute, measured). When none
-					// is dark enough the sound lights fewer, never one that is still lit
+					// only a mark that has gone out; when none is, the sound lights fewer
 					if (marks[i].age <= marks[i].rise + marks[i].decay * 4.5) continue;
 					ignite(marks[i], i, lit, wanted);
 					lit++;
@@ -1106,20 +1002,19 @@ function create(): Preset {
 			for (let i = 0; i < marks.length; i++) {
 				const m = marks[i];
 				if (i >= inSky || m.age > m.rise + m.decay * 6) {
-					// dark: it draws nothing and goes nowhere until a sound places it again
 					m.charge = 0;
 					if (i < inSky) m.age += c.dt;
 					ribbon(markVerts, markTrail, i, 0, 0);
 					continue;
 				}
 				m.age += c.dt;
-				m.charge = m.age <= 0 ? 0 : m.age < m.rise ? smoothstep(m.age / m.rise) : Math.exp(-(m.age - m.rise) / m.decay);
-				// the throw is chased, never assigned
+				if (m.age <= 0) m.charge = 0;
+				else if (m.age < m.rise) m.charge = smoothstep(m.age / m.rise);
+				else m.charge = Math.exp(-(m.age - m.rise) / m.decay);
 				const boostTarget = Math.min(1, m.charge) * m.fling;
 				m.boost += (boostTarget - m.boost) * Math.min(1, (boostTarget > m.boost ? m.chase : m.chase * 0.4) * c.dt);
 
-				// a slow broad flow: a mark is on screen for about a second, and in that second it should fly
-				// one arc, not two
+				// slow broad flow: one arc over a mark's second on screen
 				if ((tick + i) % FLOW_EVERY === 0 || (m.gx === 0 && m.gy === 0 && m.gz === 0)) {
 					flow(m.x, m.y, m.z, 0.38, fieldTime * 0.6, markSpread);
 					m.gx = flowX;
@@ -1133,7 +1028,6 @@ function create(): Preset {
 				m.z += m.hz * v;
 				setHead(markTrail, i, m);
 
-				// where it is in the picture now
 				const bx = m.x - Px;
 				const by = m.y - Py;
 				const bz = m.z - Pz;
@@ -1143,20 +1037,20 @@ function create(): Preset {
 				m.vy = ((bx * Yx + by * Yy + bz * Yz) / dd) * K.FOCAL;
 
 				m.alpha = Math.min(K.MARK_ALPHA_CAP, Math.max(0, m.charge * (0.8 + m.power * 1.3) * sectionPower * (0.62 + m.brightness * 0.55)));
-				// one channel each: length is the pace, brightness the loudness, width the breadth
 				ribbon(markVerts, markTrail, i, m.alpha, K.MARK_WIDTH * (0.5 + m.breadth + m.soft * 0.75 + m.charge * 0.6) * markWidthBand, bySound ? m.tone : -1);
 				if (m.charge > flareNow) flareNow = m.charge;
 
-				// its head: a star, as bright as its sound and as big as its hit
 				if (m.charge > 0.04 && depth > NEAR) {
-					const seen = smoothstep((depth - nearDark) * nearK) * (1 - smoothstep((depth - fogStart) * fogK));
+					const seen = seenAt(depth);
 					const sx = width / 2 + m.vx * (height / 2);
 					const sy = height / 2 - m.vy * (height / 2);
 					const hot = Math.max(0, Math.min(1, 0.35 + m.breadth * 0.9 - m.soft * 0.6));
 					const size = Math.min(height * K.MAX_STAR, (((0.026 + m.power * 0.05) * (0.55 + m.charge * 0.45) * (1.5 - hot * 0.5)) / depth) * focal);
 					const light = Math.min(1, m.charge * (0.35 + m.power * 0.65) * sectionPower) * seen;
 					let o = headCount++ * 28;
-					const tone = bySound ? m.tone : byDepth ? 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark)) : 0;
+					let tone = 0;
+					if (bySound) tone = m.tone;
+					else if (byDepth) tone = nearTone(depth);
 					for (let k = 0; k < 4; k++) {
 						const u = k % 2 === 0 ? -1 : 1;
 						const w = k < 2 ? -1 : 1;
@@ -1173,22 +1067,16 @@ function create(): Preset {
 			}
 			flare = flareNow;
 
-			// what the geometry adds up to: a NaN anywhere in the scene shows here, with or without a GPU
 			publishDiagnostics("layers3d", { checksum, cameraX: Px, cameraZ: Pz, heads: headCount });
 
-			// a lost context is not the end: a new one is asked for every couple of seconds until it comes
 			if (renderer?.lost()) {
-				renderer = sharedRenderer = null;
+				renderer = null;
 				rendererLost = true;
 			}
-			if (!renderer && rendererLost) {
-				const now = performance.now();
-				if (sharedRenderer) renderer = sharedRenderer;
-				else if (now > retryAt) {
-					retryAt = now + 2000;
-					renderer = sharedRenderer = makeRenderer();
-					if (renderer) rendererLost = false;
-				}
+			if (!renderer && rendererLost && performance.now() > retryAt) {
+				retryAt = performance.now() + 2000;
+				renderer = makeRenderer();
+				if (renderer) rendererLost = false;
 			}
 			if (!renderer) return;
 			renderer.draw(
@@ -1207,13 +1095,18 @@ function create(): Preset {
 
 			// ---- onto the frame, and the bloom over it -------------------------------------------------------
 			ctx.drawImage(renderer.canvas, 0, 0);
-			// the halo is the events' channel: it swells with the marks' own light and the release
 			glow(ctx, renderer.canvas, width, height, c.scale, (0.4 + tintPulse * 0.35 + release * 0.9) * K.GLOW);
+		},
+		dispose() {
+			renderer?.dispose();
+			renderer = null;
+			rendererLost = false;
+			glow.dispose();
 		}
 	};
 }
 
-// scratch for one ribbon's projected points - module scope, so a frame allocates nothing
+// scratch for one ribbon's projected points, at module scope so a frame allocates nothing
 const sxs = new Float32Array(TRAIL);
 const sys = new Float32Array(TRAIL);
 const hws = new Float32Array(TRAIL);

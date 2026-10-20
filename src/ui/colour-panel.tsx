@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "./colours";
+import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "../colours";
 
-// The colours, at the top of the knobs panel: the cover's palette or picked colours, and what the
-// gradient follows. A picked colour opens a picker beside the panel (where the panel's scrolling
-// would cut it off), placed the same way as the knobs' hints.
+// The colours, at the top of the knobs panel: cover or picked colours, and what the gradient follows.
+// The picker opens beside the panel, because the panel's scrolling would cut it off.
 
 type Hsv = { h: number; s: number; v: number };
 
@@ -60,8 +59,7 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 	top: number;
 	right: number;
 }) {
-	// HSV is kept here, not derived from the hex: at no saturation or no brightness the hue is not in
-	// the hex at all, and the hue strip would jump back to red
+	// HSV is kept, not derived from the hex: at zero saturation or brightness the hue is not in the hex
 	const [hsv, setHsv] = useState(() => hexToHsv(hex));
 	const [text, setText] = useState(hex);
 	const set = (next: Hsv) => {

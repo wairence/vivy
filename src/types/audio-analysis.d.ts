@@ -1,9 +1,7 @@
 interface SpotifyAudioAnalysis {
 	track: { tempo: number; duration: number };
 	beats: { start: number; duration: number; confidence: number }[];
-	// The endpoint has always returned these; they were simply never declared, so the whole timeline
-	// structure - which beat starts a bar, where the sections are and how loud each one is - arrived
-	// with every track and was thrown away. Optional because a track can legitimately lack them.
+	// optional: a track can lack them
 	bars?: { start: number; duration: number; confidence: number }[];
 	tatums?: { start: number; duration: number; confidence: number }[];
 	sections?: {
@@ -25,8 +23,7 @@ interface SpotifyAudioAnalysis {
 		loudness_end: number;
 		pitches: number[];
 		timbre: number[];
-		// documented by the public Web API, never checked against what the internal endpoint sends -
-		// which is the point of dumping it
+		// from the public Web API docs, not verified against the internal endpoint
 		confidence?: number;
 	}[];
 }

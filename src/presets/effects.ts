@@ -2,9 +2,7 @@ import { sectionIndexAt, TrackAudioData } from "../audio-data";
 
 type Segment = SpotifyAudioAnalysis["segments"][number];
 
-// a shimmering, iridescent tint for a hit (kick/snare), used by Drift - rotates the base colour's channels through
-// a slowly cycling phase (cheap, no HSL math) and blends it in proportional to `amount`, so each hit
-// flashes a slightly different hue instead of one fixed accent colour
+// iridescent tint for a hit (Drift): rotates the colour channels by a slow phase, so each hit flashes a slightly different hue
 export function shimmerPhase(t: number): number {
 	return (Math.sin(t * 2.4) + 1) / 2;
 }
@@ -14,9 +12,7 @@ export function shimmerTint(
 	amount: number
 ): { r: number; g: number; b: number } {
 	if (amount < 0.02) return base;
-	// callers pass c.pop straight through, which spikes to ~1 on a hard beat - at amount=1 this is a
-	// full R/G/B channel swap, not a shimmer, and reads as a glitch flash rather than an iridescent
-	// tint. Capping it keeps the hue nudge visible on every hit without ever fully overwriting colour
+	// uncapped, amount 1 is a full channel swap that reads as a glitch
 	const a = Math.min(0.4, amount);
 	const rotA = { r: base.b, g: base.r, b: base.g };
 	const rotB = { r: base.g, g: base.b, b: base.r };
@@ -27,33 +23,15 @@ export function shimmerTint(
 	};
 }
 
-// fast (~2s) vs slow (~20s) moving averages of energy - the gap between them says whether a section
-// is building or settling right now, on a musical timescale rather than a per-frame one. `level` is
-// "how loud is this whole stretch on average", `trend` is "rising" (+) or "falling" (-)
-export function createEnergyTrend(fastRate = 0.6, slowRate = 0.05) {
-	let fast = 0.5;
-	let slow = 0.5;
-	return (energy: number, dt: number) => {
-		fast += (energy - fast) * Math.min(1, fastRate * dt);
-		slow += (energy - slow) * Math.min(1, slowRate * dt);
-		return { level: slow, trend: fast - slow };
-	};
-}
-
 // timbre[1] is roughly "brightness" in Spotify's timbre basis and spans about +-100
 export function timbreBrightness(segment: Segment | null): number {
 	if (!segment) return 0;
 	return Math.max(-1, Math.min(1, (segment.timbre[1] || 0) / 100));
 }
 
-// The harmony's colour: each section of the track has its own key in the analysis, and the palette
-// leans off the album's hue by how far that key sits from the track's home key on the circle of
-// fifths. In the home key the colour is the album's own. Measured over 105 tracks: a section's key
-// differs from the last one 1.6 times a minute, and half of all playing time is away from home - so
-// the picture re-tints about as often as the song changes part, and holds still in between.
-// (Following the chroma's tonal centre instead wobbled +-15 degrees every second on every track
-// measured, which is not a statement about the music.)
-// The lean at the far side of the circle, in turns of hue, and how fast it may move per second
+// each section has its own key; the hue leans off the album's by its distance from the home key on the circle
+// of fifths, so the picture re-tints about as often as the song changes part. Lean at the far side, in turns of hue,
+// and the most it may move per second
 const HUE_SWING = 0.26;
 const HUE_RATE = 0.05;
 
@@ -80,39 +58,37 @@ export function createKeyHue() {
 	};
 }
 
-// The glow over a picture that is redrawn whole every frame: what is already bright, blurred at two
-// sizes and added back - a tight core that is steady, and a wide halo whose strength is the caller's
-// to drive (it is where an event is seen). Both are rendered small: they are blurs, so resolution is
-// wasted on them. Not for a canvas that accumulates - that would re-blur its own history.
+// glow over a picture redrawn whole every frame: bright parts blurred at two sizes and added back, a steady core and
+// a wide halo driven by the caller. Rendered small (blurs). Not for a canvas that accumulates.
 const GLOW_CORE_DIV = 4;
 const GLOW_HALO_DIV = 12;
+
+function fitReduced(canvas: HTMLCanvasElement, width: number, height: number, div: number): [number, number] {
+	const w = Math.max(1, Math.ceil(width / div));
+	const h = Math.max(1, Math.ceil(height / div));
+	if (canvas.width !== w || canvas.height !== h) {
+		canvas.width = w;
+		canvas.height = h;
+	}
+	return [w, h];
+}
 
 export function createGlow() {
 	let core: HTMLCanvasElement | null = null;
 	let halo: HTMLCanvasElement | null = null;
-	return (ctx: CanvasRenderingContext2D, source: CanvasImageSource, width: number, height: number, scale: number, haloAlpha: number) => {
+	const glow = (ctx: CanvasRenderingContext2D, source: CanvasImageSource, width: number, height: number, scale: number, haloAlpha: number) => {
 		if (typeof document === "undefined") return;
 		core = core || document.createElement("canvas");
 		halo = halo || document.createElement("canvas");
 		const cx = core.getContext("2d")!;
 		const hx = halo.getContext("2d")!;
-		const nw = Math.max(1, Math.ceil(width / GLOW_CORE_DIV));
-		const nh = Math.max(1, Math.ceil(height / GLOW_CORE_DIV));
-		if (core.width !== nw || core.height !== nh) {
-			core.width = nw;
-			core.height = nh;
-		}
+		const [nw, nh] = fitReduced(core, width, height, GLOW_CORE_DIV);
 		cx.clearRect(0, 0, nw, nh);
 		// contrast is the bright-pass
 		cx.filter = `contrast(1.6) brightness(1.2) blur(${Math.max(1, (scale * 0.006) / GLOW_CORE_DIV)}px)`;
 		cx.drawImage(source, 0, 0, nw, nh);
 		cx.filter = "none";
-		const hw = Math.max(1, Math.ceil(width / GLOW_HALO_DIV));
-		const hh = Math.max(1, Math.ceil(height / GLOW_HALO_DIV));
-		if (halo.width !== hw || halo.height !== hh) {
-			halo.width = hw;
-			halo.height = hh;
-		}
+		const [hw, hh] = fitReduced(halo, width, height, GLOW_HALO_DIV);
 		hx.clearRect(0, 0, hw, hh);
 		hx.filter = `blur(${Math.max(1, (scale * 0.03) / GLOW_HALO_DIV)}px) brightness(2.2)`;
 		hx.drawImage(core, 0, 0, hw, hh);
@@ -125,4 +101,10 @@ export function createGlow() {
 		ctx.drawImage(halo, 0, 0, width, height);
 		ctx.restore();
 	};
+	// a canvas sized 0x0 gives its memory back now, not at the next garbage collection
+	const dispose = () => {
+		for (const c of [core, halo]) if (c) c.width = c.height = 0;
+		core = halo = null;
+	};
+	return Object.assign(glow, { dispose });
 }

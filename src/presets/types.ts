@@ -16,6 +16,8 @@ export type PresetFrame = {
 
 export type Preset = {
 	draw: (frame: PresetFrame) => void;
+	// release canvases and GPU memory: called when the preset is switched away and when the page closes
+	dispose: () => void;
 };
 
 export type PresetDefinition = {
@@ -37,4 +39,11 @@ export function currentEnergy(frame: PresetFrame): number {
 	if (!frame.isPlaying) return 0.5;
 
 	return sampleCurve(frame.audio.loudnessCurve, frame.progressSec);
+}
+
+// What a simulation reports about itself for the headless check: state not visible in draw calls (a camera, a simulation)
+// is published once a frame and asserted finite and in range. Pixel buffers cannot be checked: a Uint8ClampedArray turns NaN into 0.
+export let lastDiagnostics: { label: string; values: Record<string, number> } | null = null;
+export function publishDiagnostics(label: string, values: Record<string, number>): void {
+	lastDiagnostics = { label, values };
 }

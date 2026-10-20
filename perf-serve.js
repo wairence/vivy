@@ -3,8 +3,8 @@ const fs = require("fs");
 const path = require("path");
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json" };
-// A DEV server: it answers this machine only, serves files from this folder only, and takes bodies of
-// at most this size - a POST from any page in a browser reaches it, so none of that is optional
+// Dev server: localhost only, files from this folder only, bounded bodies (any page can POST to it).
+// Endpoints: POST /dump (track analysis), /mark (B press), /log (probe), /save/<name> (screenshot).
 const ROOT = path.resolve(__dirname);
 const MAX_BODY = 20 * 1024 * 1024;
 const ORIGINS = ["http://localhost:8790", "http://127.0.0.1:8790", "https://xpui.app.spotify.com"];
@@ -26,9 +26,7 @@ const collect = (req, res, done) => {
 
 http
 	.createServer((req, res) => {
-		// Only this machine's own name in the Host header: a page that points its own domain at
-		// 127.0.0.1 (DNS rebinding) would otherwise read every file here. And only these pages may post:
-		// the harness itself and the Spotify client in a dev build
+		// Host check against DNS rebinding; Origin limited to the harness and the Spotify dev client.
 		if (!/^(localhost|127\.0\.0\.1):8790$/.test(req.headers.host || "")) {
 			res.writeHead(403);
 			res.end();
@@ -41,14 +39,9 @@ http
 			return;
 		}
 		const cors = origin ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {};
-		// A diagnostic running inside the Spotify client cannot be read from outside it - its console
-		// and its notifications live in that window. This lets a probe post what it found somewhere
-		// readable instead of asking a human to transcribe a console line.
-		// the last track's real analysis, so the structure detector can be developed against music
 		if (req.method === "POST" && req.url === "/dump") {
 			collect(req, res, body => {
-				// one file per track: a single shared file would be overwritten the moment Spotify
-				// advances to the next song
+				// one file per track
 				let name = "unknown";
 				try { name = String(JSON.parse(body).name || "unknown"); } catch { /* keep the default */ }
 				const safe = name.replace(/[^\wЀ-ӿ　-鿿 -]/g, "").trim().slice(0, 60) || "unknown";
@@ -60,8 +53,6 @@ http
 			});
 			return;
 		}
-		// "this looks wrong, right now" - one line per press of B in a dev build (see app.tsx),
-		// appended: a dataset of real failures.
 		if (req.method === "POST" && req.url === "/mark") {
 			collect(req, res, body => {
 				fs.appendFileSync(path.join(__dirname, "marks.jsonl"), `${body}

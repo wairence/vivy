@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Frame rate setting under More settings: 30, 60, 120 or the monitor's own (default).
+- Memory: Drift's WebGL context and both presets' glow buffers are released when you switch presets or leave the page; before, Drift's stayed for as long as Spotify ran.
+- Code: comments cut down to what the code does not say, the settings page split into components, unused signals and the switched-off chorus detector removed. The pictures are unchanged.
+
 ## 0.2.0 — 2026-10-19
 
 - Colours: from the cover or your own (two or three, with a colour picker), and a choice of what the gradient follows. Each preset has its own.
