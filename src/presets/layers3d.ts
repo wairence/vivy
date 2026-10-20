@@ -8,7 +8,7 @@
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
 import { createConductor } from "./conductor";
-import { colourSettings, distinctCover, Hsl, hslToRgb, palette, paletteAt } from "../colours";
+import { colourSettings, distinctCover, Hsl, hslToRgb, palette, paletteAt, Rgb } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition, publishDiagnostics } from "./types";
 import { tune, tuneVersion } from "./tune";
@@ -173,9 +173,6 @@ const K = tune("layers3d", {
 	["FOCAL", "ORBIT_REST", "ORBIT_LOUD", "CLOUD", "MARK_TRAIL", "FLOW_MAX", "MAX_STAR", "GLOW"]
 );
 
-
-type Rgb = { r: number; g: number; b: number };
-
 type Particle = {
 	x: number;
 	y: number;
@@ -228,7 +225,10 @@ const COLOURS = colourSettings("layers3d", [
 	["music", "Music", "Everything slides along the colours with how loud the music is"]
 ]);
 
-const smoothstep = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const smoothstep = (t: number) => {
+	const u = Math.max(0, Math.min(1, t));
+	return u * u * (3 - 2 * u);
+};
 const shortest = (d: number) => ((d + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
 
 const RIBBON_VS = `
@@ -360,6 +360,8 @@ function createRenderer(maxParticles: number): Renderer | null {
 		gl.enableVertexAttribArray(loc);
 		gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride * 4, offset * 4);
 	};
+	const colour = (p: WebGLProgram, name: string, rgb: Rgb) =>
+		gl.uniform3f(gl.getUniformLocation(p, name), rgb.r / 255, rgb.g / 255, rgb.b / 255);
 
 	return {
 		canvas,
@@ -386,16 +388,16 @@ function createRenderer(maxParticles: number): Renderer | null {
 				attr(ribbon, "a_alpha", 1, 5, 2);
 				attr(ribbon, "a_side", 1, 5, 3);
 				attr(ribbon, "a_tone", 1, 5, 4);
-				gl.uniform3f(gl.getUniformLocation(ribbon, "u_color"), layer.rgb.r / 255, layer.rgb.g / 255, layer.rgb.b / 255);
-				gl.uniform3f(gl.getUniformLocation(ribbon, "u_near"), layer.near.r / 255, layer.near.g / 255, layer.near.b / 255);
+				colour(ribbon, "u_color", layer.rgb);
+				colour(ribbon, "u_near", layer.near);
 				gl.drawElements(gl.TRIANGLES, layer.count * (TRAIL - 1) * 6, gl.UNSIGNED_SHORT, 0);
 			}
 
 			if (headCount > 0) {
 				gl.useProgram(head);
 				gl.uniform2f(gl.getUniformLocation(head, "u_res"), width, height);
-				gl.uniform3f(gl.getUniformLocation(head, "u_color"), headRgb.r / 255, headRgb.g / 255, headRgb.b / 255);
-				gl.uniform3f(gl.getUniformLocation(head, "u_near"), headNear.r / 255, headNear.g / 255, headNear.b / 255);
+				colour(head, "u_color", headRgb);
+				colour(head, "u_near", headNear);
 				gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, headIbo);
 				gl.bufferData(gl.ARRAY_BUFFER, heads, gl.DYNAMIC_DRAW);
 				attr(head, "a_pos", 2, 7, 0);
@@ -428,10 +430,6 @@ function create(): Preset {
 	if (sharedRenderer === undefined) sharedRenderer = makeRenderer();
 	let renderer = sharedRenderer;
 	let retryAt = 0;
-	let nearDark = K.NEAR_DARK;
-	let nearK = 1;
-	let fogStart = K.FOG_START;
-	let fogK = 1;
 	if (!renderer && typeof Spicetify !== "undefined") Spicetify.showNotification("Drift needs WebGL, and this client has it switched off");
 
 	const scatter = (p: Particle) => {
@@ -501,7 +499,7 @@ function create(): Preset {
 	let skySize = 0;
 	let harm = 0;
 	let cursor = 0;
-	let flash = 0;
+	let release = 0;
 	const keyHue = createKeyHue();
 	let pausedAt = "";
 	let soundAt = 0.5;
@@ -518,10 +516,12 @@ function create(): Preset {
 				if (still === pausedAt) return;
 				pausedAt = still;
 			} else pausedAt = "";
-			nearDark = K.NEAR_DARK;
-			nearK = 1 / (K.NEAR_CLEAR - K.NEAR_DARK);
-			fogStart = K.FOG_START;
-			fogK = 1 / (K.FOG_END - K.FOG_START);
+			const nearDark = K.NEAR_DARK;
+			const nearK = 1 / (K.NEAR_CLEAR - K.NEAR_DARK);
+			const fogStart = K.FOG_START;
+			const fogK = 1 / (K.FOG_END - K.FOG_START);
+			const seenAt = (depth: number) => smoothstep((depth - nearDark) * nearK) * (1 - smoothstep((depth - fogStart) * fogK));
+			const nearTone = (depth: number) => 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark));
 			groundTrail.step = K.GROUND_TRAIL / (TAIL - 1);
 			sheetTrail.step = K.SHEET_TRAIL / (TAIL - 1);
 			markTrail.step = K.MARK_TRAIL / (TAIL - 1);
@@ -547,8 +547,7 @@ function create(): Preset {
 			// ---- the brace and the release ------------------------------------------------
 			const braceEarly = Math.max(c.anticipation, Math.min(1, c.windup * 0.8));
 			const releaseRaw = c.timeToImpact !== null && c.timeToImpact > 0 ? 0 : c.impact;
-			flash += (releaseRaw - flash) * Math.min(1, (releaseRaw > flash ? 11 : 3) * c.dt);
-			const release = flash;
+			release += (releaseRaw - release) * Math.min(1, (releaseRaw > release ? 11 : 3) * c.dt);
 			const runDip = Math.max(0.12, c.runInDip);
 			const windUp = 1 + c.windup * (0.12 + c.runInBuild * 0.9);
 			const cutGate = 1 - braceEarly * 0.5;
@@ -654,7 +653,6 @@ function create(): Preset {
 			const sheetNear = byDepth ? sheetOf(along(1)) : sheetRgb;
 			const markNear = byDepth || bySound ? markOf(along(1)) : markRgb;
 
-
 			// ---- the wake: what the marks cutting through the field do to a stroke at (x, y, z) -----------------
 			const cutFall = 1 / beat;
 			const wakeRise = 1 / (0.3 * beat);
@@ -711,11 +709,11 @@ function create(): Preset {
 					sxs[k] = width / 2 + ((ax * Rx + az * Rz) / d) * focal;
 					sys[k] = height / 2 - ((ax * Yx + ay * Yy + az * Yz) / d) * focal;
 					const age = j / (TAIL - 1);
-					const seen = smoothstep((depth - nearDark) * nearK) * (1 - smoothstep((depth - fogStart) * fogK));
+					const seen = seenAt(depth);
 					const w = Math.min(maxHalf, (halfWidth * focal) / d) * (1 - age * 0.7);
 					hws[k] = Math.max(0.6, w);
 					als[k] = alpha * seen * (1 - age) * Math.min(1, w / 0.6);
-					tns[k] = tone >= 0 ? tone : 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark));
+					tns[k] = tone >= 0 ? tone : nearTone(depth);
 				}
 				let nx0 = sxs[2] - sxs[3];
 				let ny0 = sys[2] - sys[3];
@@ -927,6 +925,11 @@ function create(): Preset {
 				ax = 1;
 				ay = 0;
 			}
+			const toEdge = (pos: number, dir: number, edge: number) => {
+				if (dir > 1e-3) return (pos + edge) / dir;
+				if (dir < -1e-3) return (pos - edge) / dir;
+				return 1e9;
+			};
 			const place = (m: Mark, i: number, px: number, py: number, depth: number) => {
 				const ox = (px * depth) / K.FOCAL;
 				const oy = (py * depth) / K.FOCAL;
@@ -967,9 +970,7 @@ function create(): Preset {
 				const near = runner ? 1 : 0.15 + r * 0.7;
 				if (near > K.FLY_IN_NEARER && al > 0.15) {
 					// back along the wind to just past the edge it would have come in over
-					const tx = ax > 1e-3 ? (px + aspect) / ax : ax < -1e-3 ? (px - aspect) / ax : 1e9;
-					const ty = ay > 1e-3 ? (py + 1) / ay : ay < -1e-3 ? (py - 1) / ay : 1e9;
-					const t = Math.min(tx, ty) + K.FLY_IN_MARGIN;
+					const t = Math.min(toEdge(px, ax, aspect), toEdge(py, ay, 1)) + K.FLY_IN_MARGIN;
 					px -= ax * t;
 					py -= ay * t;
 				}
@@ -1004,7 +1005,9 @@ function create(): Preset {
 					continue;
 				}
 				m.age += c.dt;
-				m.charge = m.age <= 0 ? 0 : m.age < m.rise ? smoothstep(m.age / m.rise) : Math.exp(-(m.age - m.rise) / m.decay);
+				if (m.age <= 0) m.charge = 0;
+				else if (m.age < m.rise) m.charge = smoothstep(m.age / m.rise);
+				else m.charge = Math.exp(-(m.age - m.rise) / m.decay);
 				const boostTarget = Math.min(1, m.charge) * m.fling;
 				m.boost += (boostTarget - m.boost) * Math.min(1, (boostTarget > m.boost ? m.chase : m.chase * 0.4) * c.dt);
 
@@ -1035,14 +1038,16 @@ function create(): Preset {
 				if (m.charge > flareNow) flareNow = m.charge;
 
 				if (m.charge > 0.04 && depth > NEAR) {
-					const seen = smoothstep((depth - nearDark) * nearK) * (1 - smoothstep((depth - fogStart) * fogK));
+					const seen = seenAt(depth);
 					const sx = width / 2 + m.vx * (height / 2);
 					const sy = height / 2 - m.vy * (height / 2);
 					const hot = Math.max(0, Math.min(1, 0.35 + m.breadth * 0.9 - m.soft * 0.6));
 					const size = Math.min(height * K.MAX_STAR, (((0.026 + m.power * 0.05) * (0.55 + m.charge * 0.45) * (1.5 - hot * 0.5)) / depth) * focal);
 					const light = Math.min(1, m.charge * (0.35 + m.power * 0.65) * sectionPower) * seen;
 					let o = headCount++ * 28;
-					const tone = bySound ? m.tone : byDepth ? 1 - smoothstep((depth - nearDark) / Math.max(0.001, fogStart - nearDark)) : 0;
+					let tone = 0;
+					if (bySound) tone = m.tone;
+					else if (byDepth) tone = nearTone(depth);
 					for (let k = 0; k < 4; k++) {
 						const u = k % 2 === 0 ? -1 : 1;
 						const w = k < 2 ? -1 : 1;

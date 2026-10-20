@@ -63,6 +63,16 @@ export function createKeyHue() {
 const GLOW_CORE_DIV = 4;
 const GLOW_HALO_DIV = 12;
 
+function fitReduced(canvas: HTMLCanvasElement, width: number, height: number, div: number): [number, number] {
+	const w = Math.max(1, Math.ceil(width / div));
+	const h = Math.max(1, Math.ceil(height / div));
+	if (canvas.width !== w || canvas.height !== h) {
+		canvas.width = w;
+		canvas.height = h;
+	}
+	return [w, h];
+}
+
 export function createGlow() {
 	let core: HTMLCanvasElement | null = null;
 	let halo: HTMLCanvasElement | null = null;
@@ -72,23 +82,13 @@ export function createGlow() {
 		halo = halo || document.createElement("canvas");
 		const cx = core.getContext("2d")!;
 		const hx = halo.getContext("2d")!;
-		const nw = Math.max(1, Math.ceil(width / GLOW_CORE_DIV));
-		const nh = Math.max(1, Math.ceil(height / GLOW_CORE_DIV));
-		if (core.width !== nw || core.height !== nh) {
-			core.width = nw;
-			core.height = nh;
-		}
+		const [nw, nh] = fitReduced(core, width, height, GLOW_CORE_DIV);
 		cx.clearRect(0, 0, nw, nh);
 		// contrast is the bright-pass
 		cx.filter = `contrast(1.6) brightness(1.2) blur(${Math.max(1, (scale * 0.006) / GLOW_CORE_DIV)}px)`;
 		cx.drawImage(source, 0, 0, nw, nh);
 		cx.filter = "none";
-		const hw = Math.max(1, Math.ceil(width / GLOW_HALO_DIV));
-		const hh = Math.max(1, Math.ceil(height / GLOW_HALO_DIV));
-		if (halo.width !== hw || halo.height !== hh) {
-			halo.width = hw;
-			halo.height = hh;
-		}
+		const [hw, hh] = fitReduced(halo, width, height, GLOW_HALO_DIV);
 		hx.clearRect(0, 0, hw, hh);
 		hx.filter = `blur(${Math.max(1, (scale * 0.03) / GLOW_HALO_DIV)}px) brightness(2.2)`;
 		hx.drawImage(core, 0, 0, hw, hh);

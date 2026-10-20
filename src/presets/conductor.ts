@@ -129,10 +129,10 @@ export function createConductor() {
 		const segment = audio ? segmentAt(audio.segments, progressSec) : null;
 		// a segment boundary is a real timbral transition: a reactive signal between beats
 		const segmentHit = segment !== null && segment.start !== lastSegmentStart;
-		lastSegmentStart = segment ? segment.start : null;
+		lastSegmentStart = segment?.start ?? null;
 		// real per-segment attack character and harmonic movement - both only update ON a segment
 		// change (they describe the segment as a whole), eased the rest of the time so nothing snaps
-		if (segmentHit && segment) {
+		if (segmentHit) {
 			// loudness_max_time ~0 is percussive, 0.25 s or more a slow swell
 			attackSharpnessTarget = Math.max(0, Math.min(1, 1 - segment.loudness_max_time / 0.25));
 			if (prevPitches) {

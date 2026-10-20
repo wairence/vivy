@@ -44,7 +44,7 @@ function describeLeadIn(
 		baseline += level(t - s);
 		samples++;
 	}
-	baseline = samples > 0 ? baseline / samples : level(t - 12);
+	baseline /= samples;
 	if (baseline < 1e-3) return { leadSeconds: 3, dip: 0, build: 0 };
 
 	let lowest = Infinity;
@@ -105,6 +105,7 @@ export function findMoments(curve: CurvePoint[], bars: Bar[]): Moment[] {
 		.filter(y => Number.isFinite(y))
 		.sort((a, b) => a - b);
 	const median = sorted[sorted.length >> 1] || 0.1;
+	const relativeRise = (before: number, after: number) => (after - before) / Math.max(before, median * 0.4);
 
 	const times: number[] = [];
 	const rises: number[] = [];
@@ -113,7 +114,7 @@ export function findMoments(curve: CurvePoint[], bars: Bar[]): Moment[] {
 		const after = mean(t + 0.4, t + RISE_AFTER_SEC);
 		times.push(t);
 		// Proportional, so quiet and loud masters compare. The floored denominator stops the track's own start from winning.
-		rises.push((after - before) / Math.max(before, median * 0.4));
+		rises.push(relativeRise(before, after));
 	}
 	const best = Math.max(0, ...rises);
 	if (best < RISE_FLOOR) return [];
@@ -124,8 +125,7 @@ export function findMoments(curve: CurvePoint[], bars: Bar[]): Moment[] {
 	const order = rises.map((rise, i) => ({ rise, i })).sort((a, b) => b.rise - a.rise);
 	const picked: { t: number; rise: number }[] = [];
 	for (const { rise, i } of order) {
-		if (rise < bar) break;
-		if (picked.length >= RISE_MAX) break;
+		if (rise < bar || picked.length >= RISE_MAX) break;
 		const t = times[i];
 		if (picked.some(p => Math.abs(p.t - t) < RISE_GAP_SEC)) continue;
 		picked.push({ t, rise });
@@ -148,26 +148,21 @@ export function findMoments(curve: CurvePoint[], bars: Bar[]): Moment[] {
 	}
 
 	// Size: how much of the rise is still there ten seconds later. Separates a step from a bump, which the rise score cannot.
-	const holdOf = (t: number) => {
-		const before = mean(t - RISE_BEFORE_SEC, t - 0.4);
-		return (mean(t + 4, t + 10) - before) / Math.max(before, median * 0.4);
-	};
-	const holds = picked.map(p => holdOf(p.t));
+	const holdOf = (t: number) => relativeRise(mean(t - RISE_BEFORE_SEC, t - 0.4), mean(t + 4, t + 10));
 	const beatSec = beatOf(bars);
 	// Size is against a fixed reference (a hold of 1 is full), not the track's best, or every track would get one full-size moment.
 
 	return picked
-		.map((p, i) => {
+		.map(p => {
 			// onto the bar line if there is one within half a second: the loudness curve is sampled per
 			// segment and lands a fraction late, and a release that arrives just after the downbeat
 			// reads as a mistake in a way that one arriving just before it does not
 			const near = bars.find(b => Math.abs(b.start - p.t) < 0.5);
 			return {
 				t: near ? near.start : p.t,
-				size: Math.max(0, Math.min(1, holds[i])),
+				size: Math.max(0, Math.min(1, holdOf(p.t))),
 				...describeLeadIn(curve, p.t, beatSec)
 			};
 		})
 		.sort((a, b) => a.t - b.t);
 }
-

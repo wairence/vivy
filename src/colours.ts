@@ -65,6 +65,11 @@ const COVER_BANDS = [
 	[0.46, 0.58],
 	[0.6, 0.74]
 ];
+const coverStop = (c: Hsl, [lo, hi]: number[]): Hsl => ({
+	h: c.h,
+	s: Math.max(0.45, Math.min(0.95, c.s)),
+	l: Math.max(lo, Math.min(hi, c.l))
+});
 export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 	if (colours.mode === "custom") {
 		return colours.stops.map(hex => {
@@ -72,11 +77,9 @@ export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
 			return { h: c.h, s: c.s, l: Math.max(0.18, Math.min(0.82, c.l)) };
 		});
 	}
-	return cover.map((rgb, i) => {
-		const c = rgbToHsl(rgb);
-		const [lo, hi] = cover.length === 1 ? [0.45, 0.66] : COVER_BANDS[Math.round((i / (cover.length - 1)) * 2)];
-		return { h: c.h, s: Math.max(0.45, Math.min(0.95, c.s)), l: Math.max(lo, Math.min(hi, c.l)) };
-	});
+	return cover.map((rgb, i) =>
+		coverStop(rgbToHsl(rgb), cover.length === 1 ? [0.45, 0.66] : COVER_BANDS[Math.round((i / (cover.length - 1)) * 2)])
+	);
 }
 
 // The cover's own colours by area, for Drift, where light adds up on black and lightness hardly reads: pixel hues are grouped
@@ -130,10 +133,7 @@ export function coverHues(px: Uint8ClampedArray): Rgb[] {
 export function distinctCover(colours: Colours, cover: Rgb[]): Hsl[] {
 	if (colours.mode === "custom" || cover.length < 6) return palette(colours, cover.slice(0, 3));
 	const picked = cover.slice(3, 6).map(rgbToHsl).sort((a, b) => a.l - b.l);
-	return picked.map((c, i) => {
-		const [lo, hi] = COVER_BANDS[i];
-		return { h: c.h, s: Math.max(0.45, Math.min(0.95, c.s)), l: Math.max(lo, Math.min(hi, c.l)) };
-	});
+	return picked.map((c, i) => coverStop(c, COVER_BANDS[i]));
 }
 
 // a point along the palette, 0 = the first colour, 1 = the last; hue the short way round
@@ -148,11 +148,13 @@ export function paletteAt(p: Hsl[], t: number): Hsl {
 	if (dh > 0.5) dh -= 1;
 	else if (dh < -0.5) dh += 1;
 	// a grey stop has no hue of its own: take the other one's, or a fade to grey swings round the wheel
-	const h = a.s < 0.05 ? b.h : b.s < 0.05 ? a.h : a.h + dh * f;
+	let h = a.h + dh * f;
+	if (a.s < 0.05) h = b.h;
+	else if (b.s < 0.05) h = a.h;
 	return { h, s: a.s + (b.s - a.s) * f, l: a.l + (b.l - a.l) * f };
 }
 
-export function rgbToHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl {
+export function rgbToHsl({ r, g, b }: Rgb): Hsl {
 	const rn = r / 255;
 	const gn = g / 255;
 	const bn = b / 255;
@@ -170,15 +172,19 @@ export function rgbToHsl({ r, g, b }: { r: number; g: number; b: number }): Hsl 
 	return { h, s: d < 1e-6 ? 0 : d / (1 - Math.abs(2 * l - 1)), l };
 }
 
-export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+export function hslToRgb(h: number, s: number, l: number): Rgb {
 	const hue = (((h % 1) + 1) % 1) * 6;
 	const c = (1 - Math.abs(2 * l - 1)) * s;
 	const x = c * (1 - Math.abs((hue % 2) - 1));
 	const m = l - c / 2;
-	const k = Math.floor(hue) % 6;
-
-	const rgb =
-		k === 0 ? [c, x, 0] : k === 1 ? [x, c, 0] : k === 2 ? [0, c, x] : k === 3 ? [0, x, c] : k === 4 ? [x, 0, c] : [c, 0, x];
-
+	let rgb: number[];
+	switch (Math.floor(hue) % 6) {
+		case 0: rgb = [c, x, 0]; break;
+		case 1: rgb = [x, c, 0]; break;
+		case 2: rgb = [0, c, x]; break;
+		case 3: rgb = [0, x, c]; break;
+		case 4: rgb = [x, 0, c]; break;
+		default: rgb = [c, 0, x];
+	}
 	return { r: Math.round((rgb[0] + m) * 255), g: Math.round((rgb[1] + m) * 255), b: Math.round((rgb[2] + m) * 255) };
 }

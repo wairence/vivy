@@ -41,8 +41,6 @@ export type TrackAudioData = {
 	hitScale: number;
 };
 
-
-
 const toAmplitude = (db: number) => Math.pow(10, db / 20);
 
 // the track's quiet and loud ends are mapped onto the amplitudes the presets were tuned against
@@ -174,9 +172,7 @@ const describeFailure = (x: unknown): string => {
 	return detail || "the response had no segments";
 };
 
-async function fetchAnalysisDirectly(uri: string): Promise<unknown> {
-	const id = uri.split(":").pop();
-	if (!id) throw new Error("no track id in " + uri);
+async function fetchWithToken(url: string): Promise<Response | null> {
 	const platform = (Spicetify as unknown as {
 		Platform?: {
 			version?: string;
@@ -185,14 +181,21 @@ async function fetchAnalysisDirectly(uri: string): Promise<unknown> {
 		};
 	}).Platform;
 	const token = platform?.AuthorizationAPI?.getState()?.token?.accessToken;
-	if (!token) throw new Error("no access token available");
-	const response = await fetch(`https://spclient.wg.spotify.com/audio-attributes/v1/audio-analysis/${id}?format=json`, {
+	if (!token) return null;
+	return fetch(url, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			"Spotify-App-Version": platform?.version ?? "",
 			"App-Platform": platform?.PlatformData?.app_platform ?? ""
 		}
 	});
+}
+
+async function fetchAnalysisDirectly(uri: string): Promise<unknown> {
+	const id = uri.split(":").pop();
+	if (!id) throw new Error("no track id in " + uri);
+	const response = await fetchWithToken(`https://spclient.wg.spotify.com/audio-attributes/v1/audio-analysis/${id}?format=json`);
+	if (!response) throw new Error("no access token available");
 	if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
 	return await response.json();
 }
@@ -222,6 +225,7 @@ export async function loadTrackAudioData(uri: string): Promise<TrackAudioData> {
 
 	// both paths resolve with an error object rather than rejecting, so the shape is checked before anything reads it
 	const sections: Section[] = Array.isArray(analysis.sections) ? analysis.sections : [];
+	const bars = Array.isArray(analysis.bars) ? analysis.bars : [];
 	const curve = buildLoudnessCurve(analysis.segments);
 	normaliseCurve(curve);
 
@@ -230,9 +234,9 @@ export async function loadTrackAudioData(uri: string): Promise<TrackAudioData> {
 		segments: analysis.segments,
 		loudnessCurve: curve,
 		tempo: analysis.track.tempo,
-		bars: Array.isArray(analysis.bars) ? analysis.bars : [],
+		bars,
 		sections,
-		moments: findMoments(curve, Array.isArray(analysis.bars) ? analysis.bars : []),
+		moments: findMoments(curve, bars),
 		hitScale: hitScaleOf(analysis.segments),
 		tatums: Array.isArray(analysis.tatums) ? analysis.tatums : [],
 		hits: await decodeHits((analysis.track as unknown as { rhythmstring?: unknown })?.rhythmstring),
@@ -266,22 +270,8 @@ export async function loadTrackAudioFeatures(uri: string): Promise<TrackAudioFea
 	}
 	const ok = (x: unknown): x is TrackAudioFeatures => !!x && typeof (x as TrackAudioFeatures).tempo === "number" && (x as TrackAudioFeatures).tempo > 0;
 	if (ok(body)) return body;
-	const platform = (Spicetify as unknown as {
-		Platform?: {
-			version?: string;
-			PlatformData?: { app_platform?: string };
-			AuthorizationAPI?: { getState: () => { token?: { accessToken?: string } } };
-		};
-	}).Platform;
-	const token = platform?.AuthorizationAPI?.getState()?.token?.accessToken;
-	if (!token) throw new Error(`no audio features (${describeFailure(body)}; no access token)`);
-	const response = await fetch(url, {
-		headers: {
-			Authorization: `Bearer ${token}`,
-			"Spotify-App-Version": platform?.version ?? "",
-			"App-Platform": platform?.PlatformData?.app_platform ?? ""
-		}
-	});
+	const response = await fetchWithToken(url);
+	if (!response) throw new Error(`no audio features (${describeFailure(body)}; no access token)`);
 	if (!response.ok) throw new Error(`no audio features (${describeFailure(body)}; direct: ${response.status} ${response.statusText})`);
 	const direct = (await response.json()) as unknown;
 	if (!ok(direct)) throw new Error(`no audio features (${describeFailure(direct)})`);

@@ -56,18 +56,18 @@ export function createNextSound() {
 		let decay = 0.22;
 		let sharp = 0.6;
 		let breadth = 0;
-		if (coming && audio && audio.hits && audio.hits.length > 0) {
-			const h = audio.hits;
-			let lo = 0;
-			let hi = h.length - 1;
-			while (lo < hi) {
-				const mid = Math.ceil((lo + hi) / 2);
-				if (h[mid].t <= coming.start + 0.06) lo = mid;
-				else hi = mid - 1;
-			}
-			if (Math.abs(h[lo].t - coming.start) < 0.07) breadth = (h[lo].bands - 3) / 5;
-		}
 		if (coming && segs) {
+			const hits = audio?.hits;
+			if (hits && hits.length > 0) {
+				let lo = 0;
+				let hi = hits.length - 1;
+				while (lo < hi) {
+					const mid = Math.ceil((lo + hi) / 2);
+					if (hits[mid].t <= coming.start + 0.06) lo = mid;
+					else hi = mid - 1;
+				}
+				if (Math.abs(hits[lo].t - coming.start) < 0.07) breadth = (hits[lo].bands - 3) / 5;
+			}
 			const after = segs[nextSeg + 1];
 			const fall = after ? coming.loudness_max - after.loudness_start : 8;
 			sharp = 1 - Math.min(1, coming.loudness_max_time / 0.12);
@@ -78,7 +78,7 @@ export function createNextSound() {
 
 		const standout = average > 1e-3 && amp > average * STANDOUT_OVER;
 		const fired = coming !== null && coming.start !== lastStart && coming.start - progressSec <= lead;
-		if (fired && coming) {
+		if (fired) {
 			lastStart = coming.start;
 			average += (amp - average) * 0.2;
 		}

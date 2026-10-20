@@ -160,7 +160,6 @@ const K = tune("ridge", {
 	["FUTURE_BEATS", "HORIZON", "RIDGE", "HALF_WIDTH", "SMOOTH", "ECHO_BEATS", "SKY_BRIGHT", "GLOW"]
 );
 
-
 // what the gradient can follow here (see colours.ts)
 const COLOURS = colourSettings("ridge", [
 	["height", "Height", "Valleys take the first colour, peaks the last: the louder a moment, the further along"],
@@ -168,7 +167,11 @@ const COLOURS = colourSettings("ridge", [
 	["sound", "Sound", "The whole landscape slides along the colours with how loud the music is"]
 ]);
 
-const smoothstep = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const smoothstep = (t: number) => {
+	const u = Math.max(0, Math.min(1, t));
+	return u * u * (3 - 2 * u);
+};
+const beatOf = (audio: TrackAudioData | null) => (audio?.tempo && audio.tempo > 40 ? 60 / audio.tempo : 0.5);
 const BLACK = { r: 0, g: 0, b: 0 };
 
 // where each point of a row sits across the terrain, -1..1, and each pitch class's hill over those points
@@ -282,7 +285,7 @@ function create(): Preset {
 	// merge, gaps get weightless rows, every bar start is a row. Off: rows on beats and midpoints, equal weight.
 	const setGrid = (audio: TrackAudioData | null) => {
 		onAccents = FEATURES.accents.on;
-		const beat = audio?.tempo && audio.tempo > 40 ? 60 / audio.tempo : 0.5;
+		const beat = beatOf(audio);
 		const segs = audio?.segments ?? [];
 		const beats = audio?.beats ?? [];
 		const end = segs.length > 0 ? segs[segs.length - 1].start + segs[segs.length - 1].duration : 600;
@@ -341,6 +344,13 @@ function create(): Preset {
 		}
 		return lo;
 	};
+	const showTrack = (audio: TrackAudioData | null) => {
+		shown = audio;
+		rows.clear();
+		gates.clear();
+		setGrid(shown);
+		played = -1;
+	};
 
 	return {
 		draw(frame) {
@@ -352,13 +362,7 @@ function create(): Preset {
 				if (audio === pausedFor && still === pausedAt) return;
 				pausedFor = audio;
 				pausedAt = still;
-				if (audio !== shown || Math.abs(progressSec - viewTime) > 0.5) {
-					shown = audio;
-					rows.clear();
-					gates.clear();
-					setGrid(shown);
-					played = -1;
-				}
+				if (audio !== shown || Math.abs(progressSec - viewTime) > 0.5) showTrack(audio);
 				viewTime = progressSec;
 				presence = shown ? 1 : 0;
 			} else pausedAt = "";
@@ -371,12 +375,8 @@ function create(): Preset {
 				presence += (0 - presence) * Math.min(1, 6 * c.dt);
 				viewTime += c.dt;
 				if (presence < 0.02) {
-					shown = audio;
+					showTrack(audio);
 					viewTime = progressSec;
-					rows.clear();
-					gates.clear();
-					setGrid(shown);
-					played = -1;
 				}
 			} else {
 				viewTime = progressSec;
@@ -392,7 +392,7 @@ function create(): Preset {
 				gates.clear();
 			}
 
-			const beat = shown?.tempo && shown.tempo > 40 ? 60 / shown.tempo : 0.5;
+			const beat = beatOf(shown);
 			const step = beat / ROWS_PER_BEAT;
 			const zPerSec = (K.Z_NOW - 1) / (K.PAST_BEATS * beat);
 			const zFar = K.Z_NOW + K.FUTURE_BEATS * beat * zPerSec;
@@ -436,8 +436,11 @@ function create(): Preset {
 			const rel = (level: number) => smoothstep((level - K.LATELY_QUIET) / (K.LATELY_LOUD - K.LATELY_QUIET));
 			// its own envelope, slower than the line's: the colour follows the passage, not every hit
 			soundAt += (rel(c.energy) - soundAt) * Math.min(1, c.dt / 0.8);
-			const tint = (loud: number, near: number) =>
-				paletteAt(pal, COLOURS.follows === "height" ? loud : COLOURS.follows === "depth" ? near : soundAt);
+			const tint = (loud: number, near: number) => {
+				if (COLOURS.follows === "height") return paletteAt(pal, loud);
+				if (COLOURS.follows === "depth") return paletteAt(pal, near);
+				return paletteAt(pal, soundAt);
+			};
 			// cover palettes are turned off the row colour for the line and section rows; picked colours as picked
 			const turn = COLOURS.mode === "cover" ? 0.14 : 0;
 			const liveHue = keyHue(shown, viewTime, c.dt) * COLOURS.harmony;
@@ -735,14 +738,14 @@ function create(): Preset {
 			}
 			ctx.restore();
 
-			const edge = midAt(K.Z_NOW) + (K.SIDE * half) / K.Z_NOW;
-			const edge0 = midAt(K.Z_NOW) - (K.SIDE * half) / K.Z_NOW;
+			const lineRight = midAt(K.Z_NOW) + (K.SIDE * half) / K.Z_NOW;
+			const lineLeft = midAt(K.Z_NOW) - (K.SIDE * half) / K.Z_NOW;
 
 			// ---- the waveform itself, on top -------------------------------------------------------------------------
 			ctx.beginPath();
-			ctx.moveTo(edge0, yNow);
+			ctx.moveTo(lineLeft, yNow);
 			for (let i = 0; i < POINTS; i++) ctx.lineTo(xs[i], yNow - live[i] * liftNow);
-			ctx.lineTo(edge, yNow);
+			ctx.lineTo(lineRight, yNow);
 			ctx.strokeStyle = rgbString(liveRgb, 0.95);
 			ctx.lineWidth = Math.max(1.5, scale * 0.0042) * K.LINE;
 			ctx.stroke();
