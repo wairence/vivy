@@ -16,6 +16,7 @@ execFileSync(
 		"src/presets/index.ts",
 		"src/colours.ts",
 		"src/audio-sync.ts",
+		"src/frame-rate.ts",
 		"src/types/audio-analysis.d.ts",
 		"src/types/spicetify.d.ts",
 		"--outDir",
@@ -397,6 +398,19 @@ for (const warning of warnings) console.log(`warn  ${warning}`);
 	// a seek is taken at once
 	assert.ok(Math.abs(clock(90, true, 10.01) - 90) < 1e-9, "smooth clock: did not follow a seek");
 	console.log(`ok  smooth clock (frame steps within ${(spread * 100).toFixed(1)}%, ${(worstLag * 1000).toFixed(2)} ms off the player at worst)`);
+}
+
+// Frame rate cap: on a 240 Hz monitor with rAF jitter each cap draws its own rate; 0 draws every frame.
+{
+	const { createFramePacer } = require(path.join(OUT, "frame-rate.js"));
+	for (const fps of [30, 60, 120, 0]) {
+		const pace = createFramePacer();
+		let drawn = 0;
+		for (let f = 0; f < 2400; f++) if (pace((f * 1000) / 240 + Math.sin(f * 12.9898) * 0.5, fps)) drawn++;
+		const want = fps === 0 ? 2400 : fps * 10;
+		assert.ok(Math.abs(drawn - want) <= 1, `frame rate ${fps}: drew ${drawn} frames in 10 s, want ${want}`);
+	}
+	console.log("ok  frame rate cap (30 / 60 / 120 / monitor, 240 Hz with jitter)");
 }
 
 console.log(`\nall ${PRESETS.length} presets ok`);

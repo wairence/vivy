@@ -3,6 +3,7 @@ import { TrackAudioData } from "../audio-data";
 import { AudioSync, createSmoothClock } from "../audio-sync";
 import { DEV } from "../build-stamp";
 import { Rgb } from "../colours";
+import { createFramePacer, frameRate } from "../frame-rate";
 import { Preset, PresetFrame } from "../presets";
 import { createMiniWindow } from "./mini-window";
 
@@ -57,8 +58,10 @@ export function useFrameLoop(
 		let requestWindow: Window = window;
 		let disposed = false;
 		let drawFailed = false;
+		const pace = createFramePacer();
 
 		const render = () => {
+			if (!pace(performance.now(), frameRate())) return schedule();
 			const target = coverRef.current;
 			// by the clock, not the frame, so a new cover takes as long at 240 Hz as at 60
 			const wall = performance.now();

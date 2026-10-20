@@ -1,7 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { FRAME_RATES, frameRate, setFrameRate } from "../frame-rate";
 import { Knob, movedText, resetKnobs, setKnob, tuningOf } from "../presets/tune";
 import { ColourSection } from "./colour-panel";
 import { IconButton, ICON_CLOSE, ICON_COPY, ICON_RESET } from "./icons";
+
+const FRAME_RATE_HINT =
+	"Pictures drawn per second. Lower takes load off the graphics card on a fast monitor; movement keeps its speed, only smoothness changes. Monitor draws every frame the screen shows.";
 
 // The knobs panel (T): the preset on screen's numbers as sliders. Double-click a name to reset it;
 // "Copy" puts the moved values on the clipboard, to become the new defaults in tune(...).
@@ -114,15 +118,13 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 				<div className="vivy-tune-none">This preset has no knobs yet.</div>
 			) : null}
 			{t ? knobs(t.knobs.filter(k => k.basic)) : null}
-			{t && (t.features.length > 0 || t.knobs.some(k => !k.basic)) ? (
-				<button className={`vivy-more${more ? " on" : ""}`} aria-expanded={more} onClick={toggleMore}>
-					<span>{more ? "Fewer settings" : "More settings"}</span>
-					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-						<path d="M6 9l6 6 6-6" />
-					</svg>
-				</button>
-			) : null}
-			{t && more ? (
+			<button className={`vivy-more${more ? " on" : ""}`} aria-expanded={more} onClick={toggleMore}>
+				<span>{more ? "Fewer settings" : "More settings"}</span>
+				<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<path d="M6 9l6 6 6-6" />
+				</svg>
+			</button>
+			{more && t ? (
 				<>
 					{t.features.length > 0 ? <div className="vivy-tune-group">effects</div> : null}
 					{t.features.map((f, i) => (
@@ -132,6 +134,24 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 						</label>
 					))}
 					{knobs(t.knobs.filter(k => !k.basic))}
+				</>
+			) : null}
+			{more ? (
+				<>
+					<div className="vivy-tune-group">frame rate</div>
+					<div className="vivy-seg">
+						{FRAME_RATES.map(fps => (
+							<button
+								key={fps}
+								className={frameRate() === fps ? "on" : ""}
+								onMouseEnter={e => explain(FRAME_RATE_HINT, "applies to every preset", e.currentTarget)}
+								onMouseLeave={() => setHint(null)}
+								onClick={() => (setFrameRate(fps), refresh())}
+							>
+								{fps || "Monitor"}
+							</button>
+						))}
+					</div>
 				</>
 			) : null}
 		</div>
