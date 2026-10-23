@@ -5,7 +5,7 @@
 import { createNoise2D } from "simplex-noise";
 import { createGlow, createKeyHue, keyHueAt } from "./effects";
 import { createConductor } from "./conductor";
-import { colourSettings, hslToRgb, palette, paletteAt } from "../colours";
+import { colourSettings, GREY, hslToRgb, palette, paletteAt } from "../colours";
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
@@ -442,10 +442,11 @@ function create(): Preset {
 				return paletteAt(pal, soundAt);
 			};
 			// cover palettes are turned off the row colour for the line and section rows; picked colours as picked
-			const turn = COLOURS.mode === "cover" ? 0.14 : 0;
+			const grey = pal.every(p => p.s < GREY);
+			const turn = COLOURS.mode === "cover" && !grey ? 0.14 : 0;
 			const liveHue = keyHue(shown, viewTime, c.dt) * COLOURS.harmony;
 			const lit = tint(rel(live[LEVEL]), 1);
-			const liveRgb = hslToRgb(lit.h + liveHue + turn, Math.min(1, lit.s + 0.08), Math.min(0.8, lit.l + 0.16));
+			const liveRgb = hslToRgb(lit.h + liveHue + turn, grey ? lit.s : Math.min(1, lit.s + 0.08), Math.min(0.8, lit.l + 0.16));
 
 			ctx.fillStyle = "rgb(0, 0, 0)";
 			ctx.fillRect(0, 0, width, height);

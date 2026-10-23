@@ -65,9 +65,11 @@ const COVER_BANDS = [
 	[0.46, 0.58],
 	[0.6, 0.74]
 ];
+// below this saturation a colour reads as grey: its hue is noise and is never boosted or relied on
+export const GREY = 0.12;
 const coverStop = (c: Hsl, [lo, hi]: number[]): Hsl => ({
 	h: c.h,
-	s: Math.max(0.45, Math.min(0.95, c.s)),
+	s: c.s < GREY ? c.s : Math.max(0.45, Math.min(0.95, c.s)),
 	l: Math.max(lo, Math.min(hi, c.l))
 });
 export function palette(colours: Colours, cover: Rgb[]): Hsl[] {
@@ -149,8 +151,8 @@ export function paletteAt(p: Hsl[], t: number): Hsl {
 	else if (dh < -0.5) dh += 1;
 	// a grey stop has no hue of its own: take the other one's, or a fade to grey swings round the wheel
 	let h = a.h + dh * f;
-	if (a.s < 0.05) h = b.h;
-	else if (b.s < 0.05) h = a.h;
+	if (a.s < GREY) h = b.h;
+	else if (b.s < GREY) h = a.h;
 	return { h, s: a.s + (b.s - a.s) * f, l: a.l + (b.l - a.l) * f };
 }
 

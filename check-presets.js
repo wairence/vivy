@@ -347,6 +347,10 @@ for (const audio of [fakeAudio(7), null]) {
 	assert.strictEqual(coverHues(cover([[0.4, [45, 179, 235]], [0.3, [235, 140, 40]], [0.3, [10, 10, 10]]])).length, 2, "blue and orange halves were not two colours");
 	assert.strictEqual(coverHues(cover([[1, [128, 128, 128]]])).length, 0, "a grey cover made a palette");
 	console.log("ok  cover colours by area (a speck is not a colour, two halves are two)");
+	const { palette, GREY } = require(path.join(OUT, "colours.js"));
+	const greys = palette({ mode: "cover", stops: [], follows: "", harmony: 0 }, [{ r: 20, g: 20, b: 20 }, { r: 128, g: 124, b: 118 }, { r: 235, g: 235, b: 235 }]);
+	assert.ok(greys.every(c => c.s < GREY), "a black-and-white cover was given colour");
+	console.log("ok  a black-and-white cover stays grey");
 }
 
 for (const warning of warnings) console.log(`warn  ${warning}`);
