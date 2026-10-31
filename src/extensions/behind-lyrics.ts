@@ -43,18 +43,23 @@ const themePictureKey = () => {
 	return root ? getComputedStyle(root, "::before").backgroundImage + getComputedStyle(root, "::after").backgroundImage : "";
 };
 
+// Mid-fade a theme's picture reads as cross-fade(), which an inline style rejects, and with the window
+// hidden by cinema mode the fade never ends: the picture it fades to is taken.
+const fadingTo = (image: string) => (image.startsWith("cross-fade(") ? (image.match(/url\("[^"]*"\)(?=\)$)/)?.[0] ?? "none") : image);
+
 function copyThemePicture(into: HTMLElement, transparency: number) {
 	const root = document.querySelector(THEME_LAYERS);
 	if (!root) return;
 	into.style.background = getComputedStyle(root).backgroundColor;
 	for (const pseudo of ["::before", "::after"]) {
 		const s = getComputedStyle(root, pseudo);
-		if (s.backgroundImage === "none") continue;
+		const image = fadingTo(s.backgroundImage);
+		if (image === "none") continue;
 		const layer = document.createElement("div");
 		Object.assign(layer.style, {
 			position: "absolute",
 			inset: "0",
-			backgroundImage: s.backgroundImage,
+			backgroundImage: image,
 			backgroundSize: s.backgroundSize,
 			backgroundPosition: s.backgroundPosition,
 			backgroundRepeat: s.backgroundRepeat,
