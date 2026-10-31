@@ -39,7 +39,7 @@ The extension for Spicy Lyrics calls `track-data.ts` and the presets directly, w
 | `src/presets/types.ts` | `PresetFrame`, `Preset`, `PresetDefinition`, `currentEnergy`, `publishDiagnostics` |
 | `src/presets/index.ts` | `PRESETS`, the list the UI shows |
 | `src/presets/conductor.ts` | the Conductor |
-| `src/presets/effects.ts` | key hue, glow, shimmer tint |
+| `src/presets/effects.ts` | the key's hue lean, glow, the flare's hue lean (`shimmerHue`) |
 | `src/presets/next-sound.ts` | the next sound's properties, for Drift |
 | `src/presets/tune.ts` | live knobs |
 | `src/presets/ridge.ts`, `layers3d.ts` | the two presets |
@@ -61,7 +61,7 @@ What each preset does without data: Ridgeline has no segments to build a shape f
 
 ## Structure and rhythm
 
-`track-structure.ts` exports `findMoments(curve, bars)`: up to five places per track where the loudness takes its largest sustained step up, each with a `size`, a measured `leadSeconds`, and how far the music dips (`dip`) or climbs (`build`) on the way in. Details and measurements are in DATA.md section 3.1.
+`track-structure.ts` exports `findMoments(curve, bars)`: up to five places per track where the loudness takes its largest sustained step up, each with a `size`, a measured `leadSeconds`, and how far the music dips (`dip`) or climbs (`build`, which no preset reads now) on the way in. Details and measurements are in DATA.md section 3.1.
 
 `rhythm.ts` exports `decodeHits` (inflate with `DecompressionStream`, parse eight bands of onset times, cluster onsets within 25 ms, keep clusters of at least three bands). If inflating fails, `hits` is empty.
 
@@ -88,7 +88,7 @@ What the two presets read (full table in DATA.md section 3.3):
 | `loudness` | both | the loudness without the per-segment sawtooth, from a centred window 1.5 beats wide. Every speed and the camera read this |
 | `energy` | both | light only: dust, lit mountains and the halo (Ridgeline); the amplitude used when there are no segments (Drift) |
 | `impact` | both | the release at a moment: the halo (Ridgeline), brightness and mark count (Drift) |
-| `timeToImpact`, `anticipation`, `windup`, `runInDip`, `runInBuild` | Drift | the brace before a moment and the speed-up into it |
+| `timeToImpact`, `anticipation`, `windup`, `runInDip` | Drift | the brace before a moment, held through it |
 | `harmonicShift`, `brightness`, `attackSharpness` | Drift | wind turn rate and sheet light; field clock and sheet width; how far the background ducks under a flaring mark |
 
 Between tracks the conductor holds `loudness` and `energy` near a rest level while the next analysis loads, then joins the new track's level over 1.5 s. This is what stops a track change from stepping every speed at once.
@@ -154,7 +154,7 @@ Dev builds (`stamp.js` without `--release`) also show the build time and canvas 
 const K = tune("ridge", { HORIZON: [0.3429, 0.05, 0.6, "horizon height", "view"], ... });
 ```
 
-Each spec is `[default, min, max, label, group?]` (the group carries over to the following knobs). `tune()` returns an object whose properties are the live values. The panel writes into it and the preset reads `K.HORIZON` each frame. Persistence: values moved off their default are stored in `localStorage` under `vivy:tune:<preset>` as `[value, defaultAtTheTimeOfMoving]`. On load a stored value is used only if the code's default is still the one it was moved from, so changing a default in code wins and an old move does not come back when a default happens to return to its old value. `setKnob` clamps to the range. Every change bumps `tuneVersion()`, which a preset that caches work shaped by a knob (Ridgeline's rows and hills) compares to know when to redo it. `tuneFeatures()` shows a preset's number-key switches in the panel. `check-presets.js` runs each preset with every knob at its minimum and at its maximum.
+Each spec is `[default, min, max, label, group?]` (the group carries over to the following knobs). `tune()` returns an object whose properties are the live values. The panel writes into it and the preset reads `K.HORIZON` each frame. Persistence: values moved off their default are stored in `localStorage` under `vivy:tune:<preset>` as `[value, defaultAtTheTimeOfMoving]`. On load a stored value is used only if the code's default is still the one it was moved from, so changing a default in code wins and an old move does not come back when a default happens to return to its old value. A stored value for a knob the code no longer declares is dropped on load. `setKnob` clamps to the range. Every change bumps `tuneVersion()`, which a preset that caches work shaped by a knob (Ridgeline's rows and hills) compares to know when to redo it. `tuneFeatures()` shows a preset's number-key switches in the panel. `check-presets.js` runs each preset with every knob at its minimum and at its maximum.
 
 Hints. `tune()` takes a third argument of one-sentence descriptions; hovering a knob shows its hint and default beside the panel.
 
@@ -164,6 +164,7 @@ Each preset declares its gradients once, at module scope, with `colourSettings(p
 
 - Source. `cover` uses the cover's palette; `custom` uses two or three colours picked in the panel. `palette()` turns either into HSL stops, keeping the cover's three in separate bands of lightness and picked colours off pure black and white. `harmony` (0..1) scales how far the section's key turns the hue.
 - What the gradient follows (`follows`). Ridgeline: `height` (a row's loudness), `depth` (far to near), `sound` (the music's loudness now). Drift: `layers` (haze, hairlines and marks one colour each), `depth`, `sounds` (each mark by how ringing its sound was), `music` (everything slides with loudness). `paletteAt()` reads a point along the stops.
+- Hue reach. Every shift of hue (the section's key, a flare's iridescence, the turn towards the palette's other colours) is added into one sum and `familyHue(pal, base, lean, turn)` in `colours.ts` caps it at `HUE_REACH`, 30 degrees, from the palette colour that is being drawn. The key's lean spans that reach (`HUE_SWING = HUE_REACH`), so it does not sit on the cap by itself. With a cover palette, `turn` (0..1) pulls the hue towards the palette's other colours, each by its distance and fading out at its own hue and opposite it, so the pull has no step as the base moves; a one-colour cover has nothing to turn to. Ridgeline turns the live line and the section rows; Drift turns the marks and the sheet. `check-presets.js` tests the cap and the absence of steps.
 - Cover colours. Spotify's extraction gives dark, vibrant and light colours. Drift also reads the cover's pixels: `track-data.ts` draws the cover into a 48 px canvas and `coverHues()` groups the coloured pixels by hue; every hue group covering at least 10% of the coloured area becomes a colour (up to three; `distinctCover()` orders them dark to light). A cover with fewer than two such groups falls back to the extracted shades (`distinctCover()`).
 - Storage. Settings are kept per preset in `localStorage` under `vivy:colours:<preset>`.
 
@@ -187,7 +188,7 @@ The seven switches (keys 1-7, `FEATURES`):
 |---|---|---|
 | 1 | horizon glow | a haze at the far edge, as bright as the next stretch of the track is loud, in the colour of the section coming. A low wide band (one radial gradient stretched across, `SKY_HEIGHT`/`SKY_WIDTH`/`SKY_BRIGHT`), drawn first so the far mountains are silhouettes |
 | 2 | bars and section gates | the first beat of a bar is a brighter, heavier row. A section boundary is a row of its own in that section's colour, fainter if the boundary's confidence is low. It is a line and a colour only |
-| 3 | colour by height | hue from the palette (see Colours) plus the section's key (`keyHueAt`), depth takes saturation out, row loudness sets lightness, one stroke graded paler towards the peaks |
+| 3 | colour by height | hue from the palette plus the section's key lean (`keyHueAt`), through `familyHue` (see Colours), depth takes saturation out, row loudness sets lightness, one stroke graded paler towards the peaks |
 | 4 | lit mountains | the body near "now" is faintly lit from its ridge down. The light is in the colour, never in the alpha, so the body still hides what is behind |
 | 5 | camera | height and horizon follow the music, plus a slow side sway |
 | 6 | dust | 70 specks drawn as short streaks along the line of flight, on the track's clock, kept above the tallest ridge, lit by `energy` |
@@ -209,15 +210,15 @@ Populations. `ground`: 520 wide dim ribbons, about 8 s life, the loudness of the
 
 Ribbons. Each particle remembers its last places in a ring on its layer's own clock, so a ribbon is as long in seconds on any screen. The strip drawn is resampled at exact fixed ages between the remembered places; drawing the remembered places themselves made every ribbon twitch whenever a new one was taken. The leading end is rounded, width narrows towards the tail and is capped as a fraction of the screen height, and a stroke seen end-on dims.
 
-Motion. One wind in the world, as two rate-capped angles, wandering slowly (`harmonicShift` raises the cap). Every stroke is the wind plus bounded offsets: curl noise (divergence-free, so it neither clots nor leaves holes), re-read every few frames, and the wake of marks. A stroke's heading comes round to what is asked of it over an inertia time (`*_INERTIA`) and is never set directly. Speeds read `loudness`, never `energy`.
+Motion. One wind in the world, as two rate-capped angles, wandering slowly (`harmonicShift` raises the cap). Every stroke is the wind plus bounded offsets: curl noise (divergence-free, so it neither clots nor leaves holes), re-read every few frames, and the wake of marks. A stroke's heading comes round to what is asked of it over an inertia time (`*_INERTIA`) and is never set directly. The orbit reads `loudness`; the field's and the marks' speeds read `slowBand`, a ten-second follower of `loudness`, so a chorus runs a little faster than a verse. No speed follows a single sound or a moment. `energy` never sets a speed.
 
-Marks. When `createNextSound` fires, marks are lit from the pool, `wanted` of them by the sound's amplitude, breadth and the release. Only a mark that has gone out is reused. A mark is placed across the wind by how ringing the sound was, at a depth between `MARK_NEAR` and `MARK_FAR`; the nearer ones start just off screen and fly in. Its charge rises through a smoothstep over the sound's `rise` and decays exponentially over `decay`. One channel each: ribbon length is pace (sharper sounds run faster), brightness is the sound's power, width is its breadth. A mark's head is a star quad drawn by a shader, white-hot and tight for a broadband crack, soft and wide for a voice. A sound that stands out gets a longer, further-thrown streak. The number of marks in play (`skySize`) follows a slow follower of `loudness` and changes one slot at a time, shrinking only past a mark that has gone out.
+Marks. When `createNextSound` fires, marks are lit from the pool, `wanted` of them by the sound's amplitude, breadth and the release. Only a mark that has gone out is reused. A mark is placed across the wind by how ringing the sound was, at a depth between `MARK_NEAR` and `MARK_FAR`; the nearer ones start just off screen and fly in. Its charge rises through a smoothstep over the sound's `rise` and decays exponentially over `decay`. One channel each: brightness is the sound's power, width is its breadth. Each mark has a pace of its own (random, the nearer ones faster) that is scaled by `slowBand`, so marks never fly in step. A mark's head is a star quad drawn by a shader, white-hot and tight for a broadband crack, soft and wide for a voice. A sound that stands out lives longer. The number of marks in play (`skySize`) follows a slow follower of `loudness` and changes one slot at a time, shrinking only past a mark that has gone out.
 
-The wake. A lit mark combs, lights and hurries the strokes near it (`CUT_RADIUS`). It is the only coupling between layers, and it turns a stroke by a stored offset chased under a rate cap (`WAKE_RATE`), never by blending two directions.
+The wake. A lit mark turns and lights the strokes near it (`CUT_RADIUS`). It is the only coupling between layers, and it turns a stroke by a stored offset chased under a rate cap (`WAKE_RATE`), never by blending two directions.
 
-Brace and release. `max(anticipation, windup * 0.8)` dims the picture and narrows how far the flow wanders before a moment; `windup` speeds the field up into it; `impact` (after the moment) adds brightness and more marks. These are scaled by the run-in's measured `dip` and `build`.
+Brace and release. `max(anticipation, windup * 0.8)` dims the picture and narrows how far the flow wanders before a moment; `windup` holds that brace through the moment and after it; `impact` (after the moment) adds brightness and more marks. The brace is scaled by the run-in's measured `dip`.
 
-Colour. Album hue plus `keyHue`; three layer colours from it; `shimmerTint` shifts a layer's hue by the marks' light, capped at 0.4. Ground and sheet duck briefly when a mark flares.
+Colour. Three layer colours from the cover's palette. Each is drawn at `familyHue()` (see Colours): the palette colour leaned by the section's key (`keyHue`) and by the flare's iridescence (`shimmerHue`), and, with a cover palette, turned towards the palette's other colours (the marks fully, the sheet by half, the ground not at all). Ground and sheet duck briefly when a mark flares.
 
 Rendering. WebGL into an offscreen canvas (`alpha: false`, additive blending, so a ribbon over a ribbon is brighter), a ribbon shader and a head shader. The result is composited onto the frame's 2D context with `drawImage`, then `createGlow` adds the halo (strength `0.4 + tintPulse * 0.35 + release * 0.9`). WebGL is used because the 2D canvas cannot stroke ten thousand segments at 144 Hz.
 
