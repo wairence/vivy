@@ -73,7 +73,8 @@ const MARK_FAR = 2.7;
 // marks nearer than this (fraction of the near-far axis) fly in from off screen; the margin is in
 // half-heights of the screen
 const FLY_IN_NEARER = 0.4775;
-const FLY_IN_MARGIN = 0.04;
+// negative: inside the edge. A short sound lights and fades before a mark started outside reaches the screen
+const FLY_IN_MARGIN = -0.15;
 
 // ---- light ----------------------------------------------------------------------------------------------------
 const GROUND_ALPHA_CAP = 0.75;
@@ -119,7 +120,7 @@ const K = tune("layers3d", {
 	MARK_NEAR: [MARK_NEAR, 0.2, 2, "nearest a mark is born"],
 	MARK_FAR: [MARK_FAR, 0.6, 5, "furthest a mark is born"],
 	FLY_IN_NEARER: [FLY_IN_NEARER, 0, 1, "nearer than this flies in from off screen"],
-	FLY_IN_MARGIN: [FLY_IN_MARGIN, 0, 0.5, "how far off screen it starts"],
+	FLY_IN_MARGIN: [FLY_IN_MARGIN, -0.5, 0.5, "how far past the edge it starts"],
 	GROUND_ALPHA_CAP: [GROUND_ALPHA_CAP, 0, 1, "ground brightest", "light"],
 	SHEET_ALPHA_CAP: [SHEET_ALPHA_CAP, 0, 1, "sheet brightest"],
 	MARK_ALPHA_CAP: [MARK_ALPHA_CAP, 0, 1, "mark brightest"],
@@ -161,7 +162,7 @@ const K = tune("layers3d", {
 		MARK_NEAR: "How close to the viewer a mark may appear. Lower lets marks come up big and close; higher keeps them away.",
 		MARK_FAR: "How far from the viewer a mark may appear. Higher lets marks appear small and far off; lower keeps them all close.",
 		FLY_IN_NEARER: "Marks closer than this fly in from off screen instead of appearing in place. Zero makes all fly in, one makes all appear in place.",
-		FLY_IN_MARGIN: "How far past the screen edge a flying-in mark begins. Higher makes it travel further before coming into view.",
+		FLY_IN_MARGIN: "Where a flying-in mark begins, from the screen edge. Below zero it starts inside the picture and lights up where it can be seen; above zero it starts off screen and a short sound may be over before it comes into view.",
 		GROUND_ALPHA_CAP: "Brightest the wide, dim ribbons can get. Higher makes the background haze stronger; zero hides it.",
 		SHEET_ALPHA_CAP: "Brightest the thin hairlines can get. Higher makes them stand out; zero hides them.",
 		MARK_ALPHA_CAP: "Brightest the marks can get. Lower dims even the loudest hits; zero hides the marks.",
