@@ -276,7 +276,7 @@ Up to 0.2.0 the conductor also computed `momentum`, `glow`, `pop`, `beatStrength
 | section boundaries as moments | they are a timbral segmentation. Ranking sections fired on the wrong moments |
 | the chroma's tonal centre as a colour driver | wobbled +-15 degrees a second on every track measured |
 | `loudness` as an exponential follower | late by its own time constant. Replaced by the centred window |
-| speeds that follow a sound (a mark thrown on its hit, runners thrown harder, the field winding up before a drop, strokes hurrying in a mark's wake) | the field moved on every sound. Measured on 24 dumps, a stroke in a mark's wake went up to 2.2x its speed, changing at up to 1582% a second. Speed now follows the ten-second loudness envelope: the fastest change of a stroke's speed is 10% a second |
+| speeds that follow a sound (a mark thrown on its hit, runners thrown harder, the field winding up before a drop) | the field moved on every sound. Speed now follows the ten-second loudness envelope. Strokes in a lit mark's wake still hurry (up to 2.2x, measured on 24 dumps): a reaction to a neighbour, kept by choice |
 | the section's key leaning the hue by 94 degrees, the line and marks turned a fixed 50 degrees, Drift's shimmer rotating R, G and B | a red-and-black cover gave Ridgeline green lines, a teal one gave Drift purple marks. All hue shifts now share one cap of 30 degrees from the cover's colour, see ARCHITECTURE.md, Colours |
 | a fixed 3.5 s floor under the wind-up span | overrode the measured run-in. Half of all moments measure shorter lead-ins |
 

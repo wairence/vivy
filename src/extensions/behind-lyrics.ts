@@ -37,10 +37,29 @@ ${SPICY.videoPage}:has(.${HOST_CLASS}) ${SPICY.cover} { opacity: 1 !important; s
 // Spicy Lyrics' cinema mode lifts its page out of the window onto the body, away from the picture a theme
 // keeps under the window; the theme's layers are copied into the backdrop then, filters and all.
 const THEME_LAYERS = ".Root__top-container";
+// Cinema mode hides the window, and Chromium stops updating style in a hidden subtree, so the theme's
+// picture is read from an unseen element of the same class in the body; the real one if a theme's rule misses it.
+let probe: HTMLElement | null = null;
+const PSEUDOS = ["::before", "::after"] as const;
+const hasPicture = (el: Element) => PSEUDOS.some(p => getComputedStyle(el, p).backgroundImage !== "none");
+function themeSource(): Element | null {
+	if (!probe) {
+		probe = document.createElement("div");
+		probe.className = THEME_LAYERS.slice(1);
+		probe.style.display = "none";
+		document.body.append(probe);
+	}
+	return hasPicture(probe) ? probe : document.querySelector(THEME_LAYERS);
+}
+function releaseProbe() {
+	probe?.remove();
+	probe = null;
+}
+
 // what the theme has under the window now; a theme swaps its picture some time after the track changes
 const themePictureKey = () => {
-	const root = document.querySelector(THEME_LAYERS);
-	return root ? getComputedStyle(root, "::before").backgroundImage + getComputedStyle(root, "::after").backgroundImage : "";
+	const source = themeSource();
+	return source ? PSEUDOS.map(p => getComputedStyle(source, p).backgroundImage).join() : "";
 };
 
 // Mid-fade a theme's picture reads as cross-fade(), which an inline style rejects, and with the window
@@ -49,10 +68,11 @@ const fadingTo = (image: string) => (image.startsWith("cross-fade(") ? (image.ma
 
 function copyThemePicture(into: HTMLElement, transparency: number) {
 	const root = document.querySelector(THEME_LAYERS);
-	if (!root) return;
+	const source = themeSource();
+	if (!root || !source) return;
 	into.style.background = getComputedStyle(root).backgroundColor;
-	for (const pseudo of ["::before", "::after"]) {
-		const s = getComputedStyle(root, pseudo);
+	for (const pseudo of PSEUDOS) {
+		const s = getComputedStyle(source, pseudo);
 		const image = fadingTo(s.backgroundImage);
 		if (image === "none") continue;
 		const layer = document.createElement("div");
@@ -88,6 +108,7 @@ function seeThroughFrom(host: Element | null) {
 	for (let el = host; el && !el.matches(`${THEME_LAYERS}, body`); el = el.parentElement) el.classList.add(SEE_THROUGH);
 }
 const SCAN_MS = 500;
+const DRIFT_FPS = 120;
 
 type Slot = { canvas: HTMLCanvasElement; shade: HTMLDivElement; inWindow: boolean; copied: string; ctx: CanvasRenderingContext2D; preset: Preset; clock: ReturnType<typeof createSmoothClock> };
 
@@ -120,6 +141,8 @@ function start(initial: BehindLyrics) {
 	let requestId = 0;
 
 	const definition = () => PRESETS.find(p => p.id === settings.preset) ?? PRESETS[0];
+	// Drift shares the main thread with Spicy Lyrics' own rendering: at 240 Hz it dropped one frame in five
+	const fpsCap = () => (settings.preset === "layers3d" ? Math.min(frameRate() || DRIFT_FPS, DRIFT_FPS) : frameRate());
 	const unmount = (host: Element, slot: Slot) => {
 		slot.preset.dispose();
 		slot.canvas.remove();
@@ -151,7 +174,7 @@ function start(initial: BehindLyrics) {
 
 	const render = () => {
 		requestId = slots.size ? requestAnimationFrame(render) : 0;
-		if (!drawing || !pace(performance.now(), frameRate())) return;
+		if (!drawing || !pace(performance.now(), fpsCap())) return;
 		const { track, audioSync } = drawing;
 		const wall = performance.now();
 		const colourStep = 1 - Math.exp(-Math.min(0.1, (wall - lastColourAt) / 1000) / 0.6);
@@ -224,6 +247,7 @@ function start(initial: BehindLyrics) {
 			cancelAnimationFrame(requestId);
 			for (const [host, slot] of slots) unmount(host, slot);
 			stopDrawing();
+			releaseProbe();
 			style.remove();
 		}
 	};
