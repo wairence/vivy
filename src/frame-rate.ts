@@ -25,6 +25,14 @@ export function setFrameRate(fps: FrameRate) {
 	}
 }
 
+const MAX_PIXELS = 1920 * 1080;
+
+// Device pixels to draw a canvas at. Fills cost by area: above 1080p it renders smaller and CSS stretches it.
+export function renderSize(canvas: HTMLCanvasElement, ratio: number) {
+	const shrink = Math.min(1, Math.sqrt(MAX_PIXELS / Math.max(1, canvas.clientWidth * ratio * canvas.clientHeight * ratio)));
+	return { w: Math.max(1, Math.floor(canvas.clientWidth * ratio * shrink)), h: Math.max(1, Math.floor(canvas.clientHeight * ratio * shrink)) };
+}
+
 // Whether the animation frame at `now` (ms) is drawn under the cap. The schedule advances by whole
 // intervals, so 60 on a 240 Hz monitor is exactly every fourth frame.
 export function createFramePacer() {
