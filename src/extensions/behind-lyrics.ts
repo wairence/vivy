@@ -60,9 +60,9 @@ function paintSlot(host: Element, slot: Pick<Slot, "shade" | "inWindow" | "copie
 	const { transparency } = storedPicture();
 	slot.shade.replaceChildren();
 	slot.inWindow = !!host.closest(THEME_LAYERS);
+	slot.copied = slot.inWindow ? "" : themePictureKey();
 	if (!paintBackdrop(slot.shade, transparency)) return;
 	seeThroughFrom(slot.inWindow ? host : null);
-	slot.copied = slot.inWindow ? "" : themePictureKey();
 	if (!slot.inWindow) copyThemePicture(slot.shade, transparency);
 }
 
