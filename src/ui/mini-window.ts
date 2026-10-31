@@ -51,7 +51,8 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 		pip.removeEventListener("resize", hooks.onResize);
 		pip = null;
 		Object.assign(canvas.style, { display: "", width: "", height: "" });
-		container?.prepend(canvas);
+		// back over the backdrop, under the chrome
+		container?.querySelector(".vivy-backdrop")?.after(canvas);
 		refreshPicture();
 		hooks.onMove(false);
 	};
@@ -79,7 +80,7 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 				doc.title = "vivy";
 				doc.body.style.cssText = "margin:0;background:#000;overflow:hidden";
 				// the stylesheet stays in Spotify's document
-				// set one by one: the picture's filter and opacity are inline styles too
+				// set one by one: the picture's filter and blend are inline styles too
 				Object.assign(canvas.style, { display: "block", width: "100vw", height: "100vh" });
 				doc.body.append(canvas);
 				refreshPicture();
