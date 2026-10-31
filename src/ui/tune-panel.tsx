@@ -15,8 +15,8 @@ const TABS: [Tab, string][] = [
 const FRAME_RATE_HINT =
 	"Pictures drawn per second. Lower takes load off the graphics card on a fast monitor; movement keeps its speed, only smoothness changes. Monitor draws every frame the screen shows.";
 
-// The knobs panel (T): the preset on screen's numbers as sliders. Double-click a name to reset it;
-// "Copy" puts the moved values on the clipboard, to become the new defaults in tune(...).
+// The knobs panel (T), in tabs. Preset: the preset on screen's numbers as sliders, double-click a name
+// to reset it, "Copy" puts the moved values on the clipboard, to become the new defaults in tune(...).
 export function TunePanel({ presetId, onClose }: { presetId: string; onClose: () => void }) {
 	const [, redraw] = useState(0);
 	// drawn beside the panel, where its scrolling cannot cut it off
@@ -131,83 +131,83 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 	};
 	return (
 		<>
-		<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => (setHint(null), measureBar())}>
-			<div className="vivy-tune-head">
-				<div className="vivy-tune-title">
-					<b>Knobs</b>
-					{tab === "preset" ? (
-						<>
-							<IconButton small label="Copy moved values" icon={ICON_COPY} onClick={copy} />
-							<IconButton small label="Reset all to defaults" icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
-						</>
-					) : null}
-					<IconButton small label="Close (T)" icon={ICON_CLOSE} onClick={onClose} />
-				</div>
-				<div className="vivy-seg vivy-tabs" role="tablist">
-					{TABS.map(([id, name]) => (
-						<button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => chooseTab(id)}>
-							{name}
-						</button>
-					))}
-				</div>
-			</div>
-			{tab === "preset" ? (
-				<>
-					{!t || (t.knobs.length === 0 && t.features.length === 0) ? <div className="vivy-tune-none">This preset has no knobs yet.</div> : null}
-					{t ? knobs(t.knobs.filter(k => k.basic)) : null}
-					{t && (t.features.length > 0 || t.knobs.some(k => !k.basic)) ? (
-						<button className={`vivy-more${more ? " on" : ""}`} aria-expanded={more} onClick={toggleMore}>
-							<span>{more ? "Fewer settings" : "More settings"}</span>
-							<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-								<path d="M6 9l6 6 6-6" />
-							</svg>
-						</button>
-					) : null}
-					{more && t ? (
-						<>
-							{t.features.length > 0 ? <div className="vivy-tune-group">effects</div> : null}
-							{t.features.map((f, i) => (
-								<label key={f.name} className="vivy-tune-feature">
-									<input type="checkbox" checked={f.on} onChange={() => ((f.on = !f.on), refresh())} />
-									{i + 1}. {f.name}
-								</label>
-							))}
-							{knobs(t.knobs.filter(k => !k.basic))}
-						</>
-					) : null}
-				</>
-			) : null}
-			{tab === "colour" ? (
-				<ColourSection key={presetId} presetId={presetId} panel={panelRef} explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} />
-			) : null}
-			{tab === "picture" ? (
-				<>
-					<PictureSection explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} />
-					<div className="vivy-tune-sub">frame rate</div>
-					<div className="vivy-seg">
-						{FRAME_RATES.map(fps => (
-							<button
-								key={fps}
-								className={frameRate() === fps ? "on" : ""}
-								onMouseEnter={e => explain(FRAME_RATE_HINT, "applies to every preset", e.currentTarget)}
-								onMouseLeave={() => setHint(null)}
-								onClick={() => (setFrameRate(fps), refresh())}
-							>
-								{fps || "Monitor"}
+			<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => (setHint(null), measureBar())}>
+				<div className="vivy-tune-head">
+					<div className="vivy-tune-title">
+						<b>Knobs</b>
+						{tab === "preset" ? (
+							<>
+								<IconButton small label="Copy moved values" icon={ICON_COPY} onClick={copy} />
+								<IconButton small label="Reset all to defaults" icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
+							</>
+						) : null}
+						<IconButton small label="Close (T)" icon={ICON_CLOSE} onClick={onClose} />
+					</div>
+					<div className="vivy-seg vivy-tabs" role="tablist">
+						{TABS.map(([id, name]) => (
+							<button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => chooseTab(id)}>
+								{name}
 							</button>
 						))}
 					</div>
-				</>
-			) : null}
-			{tab === "lyrics" ? <LyricsSection explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} /> : null}
-		</div>
-		{bar ? <div className="vivy-tune-bar" style={{ top: bar.top, height: bar.height, right: bar.right }} /> : null}
-		{hint ? (
-			<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
-				<div>{hint.text}</div>
-				{hint.foot ? <small>{hint.foot}</small> : null}
+				</div>
+				{tab === "preset" ? (
+					<>
+						{!t || (t.knobs.length === 0 && t.features.length === 0) ? <div className="vivy-tune-none">This preset has no knobs yet.</div> : null}
+						{t ? knobs(t.knobs.filter(k => k.basic)) : null}
+						{t && (t.features.length > 0 || t.knobs.some(k => !k.basic)) ? (
+							<button className={`vivy-more${more ? " on" : ""}`} aria-expanded={more} onClick={toggleMore}>
+								<span>{more ? "Fewer settings" : "More settings"}</span>
+								<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M6 9l6 6 6-6" />
+								</svg>
+							</button>
+						) : null}
+						{more && t ? (
+							<>
+								{t.features.length > 0 ? <div className="vivy-tune-group">effects</div> : null}
+								{t.features.map((f, i) => (
+									<label key={f.name} className="vivy-tune-feature">
+										<input type="checkbox" checked={f.on} onChange={() => ((f.on = !f.on), refresh())} />
+										{i + 1}. {f.name}
+									</label>
+								))}
+								{knobs(t.knobs.filter(k => !k.basic))}
+							</>
+						) : null}
+					</>
+				) : null}
+				{tab === "colour" ? (
+					<ColourSection key={presetId} presetId={presetId} panel={panelRef} explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} />
+				) : null}
+				{tab === "picture" ? (
+					<>
+						<PictureSection explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} />
+						<div className="vivy-tune-sub">frame rate</div>
+						<div className="vivy-seg">
+							{FRAME_RATES.map(fps => (
+								<button
+									key={fps}
+									className={frameRate() === fps ? "on" : ""}
+									onMouseEnter={e => explain(FRAME_RATE_HINT, "applies to every preset", e.currentTarget)}
+									onMouseLeave={() => setHint(null)}
+									onClick={() => (setFrameRate(fps), refresh())}
+								>
+									{fps || "Monitor"}
+								</button>
+							))}
+						</div>
+					</>
+				) : null}
+				{tab === "lyrics" ? <LyricsSection explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} /> : null}
 			</div>
-		) : null}
+			{bar ? <div className="vivy-tune-bar" style={{ top: bar.top, height: bar.height, right: bar.right }} /> : null}
+			{hint ? (
+				<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
+					<div>{hint.text}</div>
+					{hint.foot ? <small>{hint.foot}</small> : null}
+				</div>
+			) : null}
 		</>
 	);
 }
