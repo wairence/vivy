@@ -5,6 +5,7 @@ import { announceBuild, markMoment } from "./dev";
 import { Preset, PRESETS } from "./presets";
 import { IconButton, ICON_EXPAND, ICON_KNOBS, ICON_PIP, ICON_SHRINK } from "./ui/icons";
 import { IDLE_HIDE_MS } from "./ui/mini-window";
+import { showPictureOn } from "./ui/picture";
 import { TrackOverlay } from "./ui/track-overlay";
 import { TunePanel } from "./ui/tune-panel";
 import { useFrameLoop } from "./ui/use-frame-loop";
@@ -59,6 +60,9 @@ export default function App() {
 	}, []);
 
 	useEffect(announceBuild, []);
+	useEffect(() => {
+		if (canvasRef.current && containerRef.current) showPictureOn(canvasRef.current, containerRef.current);
+	}, []);
 	useEffect(
 		() => () => {
 			presetRef.current?.dispose();
