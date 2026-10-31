@@ -8,8 +8,20 @@ import { Preset, PRESETS } from "../presets";
 import { watchTrackData } from "../track-data";
 import { paintBackdrop, storedPicture } from "../ui/picture";
 
-// Spicy Lyrics' page background host; the same box in the side panel's lyrics card is left alone.
-const PAGE_HOST = "#SpicyLyricsPage .ContentBox";
+// Every piece of Spicy Lyrics' markup this relies on. If one goes, the feature does nothing rather than break.
+const SPICY = {
+	// their background's box, on the page and in fullscreen; the same box in the side panel's card is left alone
+	host: "#SpicyLyricsPage .ContentBox",
+	sidePanel: "aside",
+	background: ".spicy-dynamic-bg",
+	canvasVideo: ".CanvasStage, .CanvasAmbient",
+	// set while a track's Canvas video plays in their fullscreen, where it hides the cover
+	videoPage: "#SpicyLyricsPage.CanvasImmersive",
+	cover: ".MediaContent",
+	controls: "#SpicyLyricsPage .ViewControls",
+	controlClass: "ViewControl",
+	settingsButton: "#SettingsToggle"
+};
 const HOST_CLASS = "vivy-behind-lyrics";
 const CANVAS_CLASS = "vivy-lyrics-canvas";
 const SHADE_CLASS = "vivy-lyrics-shade";
@@ -17,8 +29,8 @@ const SEE_THROUGH = "vivy-lyrics-see-through";
 // A track's Canvas video takes the cover's place in their fullscreen; ours replaces the video, so the cover comes back.
 // With the picture's transparency the page's wrappers go clear and stop isolating, as on vivy's own page.
 const STYLE = `
-.${HOST_CLASS} > :is(.spicy-dynamic-bg, .CanvasStage, .CanvasAmbient) { visibility: hidden; }
-#SpicyLyricsPage.CanvasImmersive:has(.${HOST_CLASS}) .MediaContent { opacity: 1 !important; }
+.${HOST_CLASS} > :is(${SPICY.background}, ${SPICY.canvasVideo}) { visibility: hidden; }
+${SPICY.videoPage}:has(.${HOST_CLASS}) ${SPICY.cover} { opacity: 1 !important; }
 :is(.${CANVAS_CLASS}, .${SHADE_CLASS}) { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .${SEE_THROUGH} { background: transparent !important; isolation: auto !important; z-index: auto !important; will-change: auto !important; }`;
 
@@ -68,7 +80,7 @@ function paintSlot(host: Element, slot: Pick<Slot, "shade" | "inWindow" | "copie
 
 function seeThroughFrom(host: Element | null) {
 	document.querySelectorAll(`.${SEE_THROUGH}`).forEach(el => el.classList.remove(SEE_THROUGH));
-	for (let el = host; el && !el.matches(".Root__top-container, body"); el = el.parentElement) el.classList.add(SEE_THROUGH);
+	for (let el = host; el && !el.matches(`${THEME_LAYERS}, body`); el = el.parentElement) el.classList.add(SEE_THROUGH);
 }
 const SCAN_MS = 500;
 
@@ -79,7 +91,7 @@ const onVivyPage = () => Spicetify.Platform?.History?.location?.pathname?.starts
 function hosts(): Element[] {
 	// the app draws its own picture; two at once would only cost
 	if (onVivyPage()) return [];
-	return [...document.querySelectorAll(PAGE_HOST)].filter(el => !el.closest("aside"));
+	return [...document.querySelectorAll(SPICY.host)].filter(el => !el.closest(SPICY.sidePanel));
 }
 
 function start(initial: BehindLyrics) {
@@ -111,6 +123,8 @@ function start(initial: BehindLyrics) {
 	};
 	const mount = (host: Element) => {
 		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d", { alpha: false });
+		if (!ctx) return;
 		canvas.className = CANVAS_CLASS;
 		canvas.style.filter = settings.dim ? `brightness(${1 - settings.dim})` : "";
 		// the black under the picture, thinned by the picture's transparency
@@ -118,12 +132,10 @@ function start(initial: BehindLyrics) {
 		shade.className = SHADE_CLASS;
 		const { transparency } = storedPicture();
 		if (transparency) canvas.style.mixBlendMode = "screen";
-		const theirs = host.querySelector(":scope > .spicy-dynamic-bg");
+		const theirs = host.querySelector(`:scope > ${SPICY.background}`);
 		if (theirs) theirs.after(shade, canvas);
 		else host.prepend(shade, canvas);
 		host.classList.add(HOST_CLASS);
-		const ctx = canvas.getContext("2d", { alpha: false });
-		if (!ctx) return (canvas.remove(), shade.remove());
 		const slot = { canvas, shade, inWindow: true, copied: "" };
 		paintSlot(host, slot);
 		slots.set(host, { ...slot, ctx, preset: definition().create(), clock: createSmoothClock() });
@@ -231,14 +243,14 @@ const VIVY_MARK =
 	'<path d="M14.6 1.8L2.6 9.6L9.4 22.2L21.4 14Z M14.6 1.8L11.6 14.3L9.4 22.2 M2.6 9.6L11.6 14.3L21.4 14"/></svg>';
 
 function placeToggle() {
-	const controls = [...document.querySelectorAll("#SpicyLyricsPage .ViewControls")].find(el => !el.closest("aside"));
+	const controls = [...document.querySelectorAll(SPICY.controls)].find(el => !el.closest(SPICY.sidePanel));
 	if (!controls || controls.querySelector(`#${TOGGLE_ID}`)) return;
 	const button = document.createElement("button");
 	button.id = TOGGLE_ID;
-	button.className = "ViewControl";
+	button.className = SPICY.controlClass;
 	button.innerHTML = VIVY_MARK;
 	button.addEventListener("click", () => setBehindLyrics({ on: !behindLyrics().on }));
-	controls.insertBefore(button, controls.querySelector("#SettingsToggle"));
+	controls.insertBefore(button, controls.querySelector(SPICY.settingsButton));
 	showToggleState(behindLyrics());
 }
 
