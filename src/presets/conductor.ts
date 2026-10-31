@@ -13,10 +13,10 @@ const smoothstep = (t: number) => {
 	const u = Math.max(0, Math.min(1, t));
 	return u * u * (3 - 2 * u);
 };
-// Acceleration before a drop lasts as long as the music's own lead-in; no fixed floor.
-const WINDUP_SPAN_MIN = 1.2;   // seconds of acceleration before the drop, at least
+// The wind-up before a drop lasts as long as the music's own lead-in; no fixed floor.
+const WINDUP_SPAN_MIN = 1.2;   // seconds of wind-up before the drop, at least
 const WINDUP_SPAN_MAX = 7;     // and at most - a run-up longer than this stops reading as one
-const WINDUP_HOLD = 1.9;       // speed stays up this long after the drop instead of dropping out
+const WINDUP_HOLD = 1.9;       // the wind-up holds this long after the drop instead of dropping out
 // Between tracks the level breathes out to GAP_REST; after GAP_HOLD seconds with no analysis the fallback pulse takes over.
 const GAP_REST = 0.12;
 const GAP_HOLD = 3;
@@ -38,12 +38,11 @@ export type Conductor = {
 	timeToImpact: number | null;
 	// 0..1, rising over the last seconds before the moment and released at it; use to pull back
 	anticipation: number;
-	// 0..1: how far the music thins out into the moment, and how much it climbs (measured per track)
+	// 0..1: how far the music thins out into the moment (measured per track)
 	runInDip: number;
-	runInBuild: number;
-	// 0..1 over the last part of the run-in: speed and density rise while brightness stays braced
+	// 0..1 over the last part of the run-in and just after the moment: the brace holds
 	windup: number;
-	// swells into a moment and peaks on it, scaled by its size; rarer than `pop`
+	// swells into a moment and peaks on it, scaled by its size
 	impact: number;
 	// eased timbre[1] (spectral brightness), 0..1
 	brightness: number;
@@ -62,7 +61,6 @@ export function createConductor() {
 	let anticipation = 0;
 	let windup = 0;
 	let runInDip = 0;
-	let runInBuild = 0;
 	let approachEnergy = 0.2;
 	let loudness = 0.2;
 	// the curve of the track last joined, how long there has been none, how far into a new one the
@@ -165,7 +163,6 @@ export function createConductor() {
 		let impactSize = 0;
 		let leadSeconds = 3;
 		let dipTarget = 0;
-		let buildTarget = 0;
 		for (const moment of moments) {
 			if (moment.t <= lookAt) continue;
 			if (moment.t - lookAt <= IMPACT_HORIZON_SEC) {
@@ -173,7 +170,6 @@ export function createConductor() {
 				impactSize = moment.size;
 				leadSeconds = moment.leadSeconds;
 				dipTarget = moment.dip;
-				buildTarget = moment.build;
 			}
 			break;
 		}
@@ -224,7 +220,6 @@ export function createConductor() {
 		windup = Math.max(windupBefore, windupAfter);
 		// eased only enough not to step when one moment's description replaces another's
 		runInDip += (dipTarget - runInDip) * Math.min(1, 4 * dt);
-		runInBuild += (buildTarget - runInBuild) * Math.min(1, 4 * dt);
 
 		const conducted: Conductor = {
 			dt,
@@ -235,7 +230,6 @@ export function createConductor() {
 			anticipation,
 			windup,
 			runInDip,
-			runInBuild,
 			impact,
 			attackSharpness,
 			harmonicShift,

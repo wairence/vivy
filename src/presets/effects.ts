@@ -1,26 +1,15 @@
 import { sectionIndexAt, TrackAudioData } from "../audio-data";
+import { HUE_REACH } from "../colours";
 
 type Segment = SpotifyAudioAnalysis["segments"][number];
 
-// iridescent tint for a hit (Drift): rotates the colour channels by a slow phase, so each hit flashes a slightly different hue
+// iridescence on a flare (Drift): a hue lean on a slow phase, so each hit shows a slightly different hue. It is added to
+// the key's lean, which familyHue caps, so it stays inside the cover's colours
 export function shimmerPhase(t: number): number {
 	return (Math.sin(t * 2.4) + 1) / 2;
 }
-export function shimmerTint(
-	base: { r: number; g: number; b: number },
-	phase: number,
-	amount: number
-): { r: number; g: number; b: number } {
-	if (amount < 0.02) return base;
-	// uncapped, amount 1 is a full channel swap that reads as a glitch
-	const a = Math.min(0.4, amount);
-	const rotA = { r: base.b, g: base.r, b: base.g };
-	const rotB = { r: base.g, g: base.b, b: base.r };
-	return {
-		r: base.r + (rotA.r + (rotB.r - rotA.r) * phase - base.r) * a,
-		g: base.g + (rotA.g + (rotB.g - rotA.g) * phase - base.g) * a,
-		b: base.b + (rotA.b + (rotB.b - rotA.b) * phase - base.b) * a
-	};
+export function shimmerHue(phase: number, amount: number): number {
+	return (phase * 2 - 1) * Math.min(1, amount) * HUE_REACH * 0.6;
 }
 
 // timbre[1] is roughly "brightness" in Spotify's timbre basis and spans about +-100
@@ -31,8 +20,8 @@ export function timbreBrightness(segment: Segment | null): number {
 
 // each section has its own key; the hue leans off the album's by its distance from the home key on the circle
 // of fifths, so the picture re-tints about as often as the song changes part. Lean at the far side, in turns of hue,
-// and the most it may move per second
-const HUE_SWING = 0.26;
+// and the most it may move per second. The far side is the palette's reach, so a lean never sits on that cap
+const HUE_SWING = HUE_REACH;
 const HUE_RATE = 0.05;
 
 // the lean the section playing at `t` asks for - for a preset that reads ahead of the playhead
