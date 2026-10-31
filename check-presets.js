@@ -351,6 +351,29 @@ for (const audio of [fakeAudio(7), null]) {
 	const greys = palette({ mode: "cover", stops: [], follows: "", harmony: 0 }, [{ r: 20, g: 20, b: 20 }, { r: 128, g: 124, b: 118 }, { r: 235, g: 235, b: 235 }]);
 	assert.ok(greys.every(c => c.s < GREY), "a black-and-white cover was given colour");
 	console.log("ok  a black-and-white cover stays grey");
+	// whatever the lean and the turn, a drawn hue stays within reach of the palette's own and moves without steps
+	const { familyHue, paletteAt, HUE_REACH, hslToRgb, rgbToHsl } = require(path.join(OUT, "colours.js"));
+	const wrap = d => (((d % 1) + 1.5) % 1) - 0.5;
+	let worstOff = 0;
+	let worstStep = 0;
+	for (let n = 0; n < 400; n++) {
+		const pal = [0, 1, 2].map(() => rgbToHsl(hslToRgb(Math.random(), Math.random(), 0.2 + Math.random() * 0.6)));
+		const lean = (Math.random() * 2 - 1) * 0.3;
+		const turn = Math.random();
+		let last = null;
+		for (let t = 0; t <= 1; t += 0.002) {
+			const base = paletteAt(pal, t);
+			const h = familyHue(pal, base, lean, turn);
+			worstOff = Math.max(worstOff, Math.abs(wrap(h - base.h)));
+			// (paletteAt itself jumps where a grey stop hands over its hue; that is not the turn's)
+			if (last !== null && base.s > 0.2 && Math.abs(wrap(base.h - lastBase)) < 1 / 360) worstStep = Math.max(worstStep, Math.abs(wrap(h - last)));
+			last = h;
+			var lastBase = base.h;
+		}
+	}
+	assert.ok(worstOff <= HUE_REACH + 1e-9, `a drawn hue ended ${(worstOff * 360).toFixed(1)} degrees off the palette`);
+	assert.ok(worstStep < 2 / 360, `the turn towards the palette stepped ${(worstStep * 360).toFixed(1)} degrees`);
+	console.log(`ok  drawn hues within ${(HUE_REACH * 360).toFixed(0)} degrees of the palette (worst turn step ${(worstStep * 360).toFixed(2)} degrees)`);
 }
 
 for (const warning of warnings) console.log(`warn  ${warning}`);

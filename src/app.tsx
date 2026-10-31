@@ -23,6 +23,7 @@ function loadStoredPresetId(): string {
 export default function App() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const backdropRef = useRef<HTMLDivElement>(null);
 	const [presetId, setPresetId] = useState(loadStoredPresetId);
 	const [uiVisible, setUiVisible] = useState(true);
 	const [isFullscreen, setIsFullscreen] = useState(false);
@@ -61,7 +62,7 @@ export default function App() {
 
 	useEffect(announceBuild, []);
 	useEffect(() => {
-		if (canvasRef.current && containerRef.current) showPictureOn(canvasRef.current, containerRef.current);
+		if (canvasRef.current && containerRef.current && backdropRef.current) return showPictureOn(canvasRef.current, containerRef.current, backdropRef.current);
 	}, []);
 	useEffect(
 		() => () => {
@@ -79,8 +80,8 @@ export default function App() {
 			const digit = /^[1-9]$/.test(key);
 			if ((key !== "b" || !DEV) && key !== "p" && key !== "t" && key !== "f" && !digit) return;
 			const target = e.target as HTMLElement | null;
-			// never steal a keystroke from a search box
-			if (target && (target.isContentEditable || /^(input|textarea)$/i.test(target.tagName))) return;
+			// never steal a keystroke from a text field; a slider or checkbox keeps focus after a click and takes no letters
+			if (target && (target.isContentEditable || target.matches?.("textarea, input:not([type=range], [type=checkbox], [type=radio])"))) return;
 			e.preventDefault();
 			if (digit) window.dispatchEvent(new CustomEvent("visualizer-feature", { detail: { preset: presetIdRef.current, n: Number(key) } }));
 			else if (key === "p") toggleMiniWindow();
@@ -117,6 +118,7 @@ export default function App() {
 
 	return (
 		<div className={`vivy-container${uiVisible ? "" : " vivy-idle"}`} ref={containerRef}>
+			<div ref={backdropRef} className="vivy-backdrop" />
 			<canvas ref={canvasRef} className="vivy-canvas" />
 
 			{tuneOpen ? <TunePanel presetId={presetId} onClose={() => setTuneOpen(false)} /> : null}

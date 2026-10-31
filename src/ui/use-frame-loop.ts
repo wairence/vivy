@@ -3,19 +3,17 @@ import { TrackAudioData } from "../audio-data";
 import { AudioSync, createSmoothClock } from "../audio-sync";
 import { DEV } from "../build-stamp";
 import { Rgb } from "../colours";
-import { createFramePacer, frameRate } from "../frame-rate";
+import { createFramePacer, frameRate, renderSize } from "../frame-rate";
 import { Preset, PresetFrame } from "../presets";
 import { createMiniWindow } from "./mini-window";
-
-const MAX_PIXELS = 1920 * 1080;
 
 // The canvas and its frame loop: size, colours on their way to the new cover's, the clock, and
 // preset.draw once per animation frame of the window the canvas is in. Returns the mini window toggle.
 export function useFrameLoop(
 	canvasRef: RefObject<HTMLCanvasElement>,
 	presetRef: MutableRefObject<Preset | undefined>,
-	audioRef: MutableRefObject<TrackAudioData | null>,
-	coverRef: MutableRefObject<Rgb[]>,
+	audioRef: { readonly current: TrackAudioData | null },
+	coverRef: { readonly current: Rgb[] },
 	setMiniOpen: (open: boolean) => void
 ) {
 	const toggleRef = useRef(() => {});
@@ -30,11 +28,7 @@ export function useFrameLoop(
 		// Spotify's window, or the mini window
 		const host = () => canvas.ownerDocument.defaultView ?? window;
 		const resize = () => {
-			const ratio = host().devicePixelRatio;
-			// fills cost by area: above 1080p the canvas renders smaller and CSS stretches it
-			const shrink = Math.min(1, Math.sqrt(MAX_PIXELS / Math.max(1, canvas.clientWidth * ratio * canvas.clientHeight * ratio)));
-			const w = Math.max(1, Math.floor(canvas.clientWidth * ratio * shrink));
-			const h = Math.max(1, Math.floor(canvas.clientHeight * ratio * shrink));
+			const { w, h } = renderSize(canvas, host().devicePixelRatio);
 			// setting a canvas's size wipes it, even to the size it already has
 			if (w === canvas.width && h === canvas.height) return;
 			// paused, nothing redraws: carry the picture over, stretched, instead of leaving black

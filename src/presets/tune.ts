@@ -58,7 +58,8 @@ export function tune<T extends Record<string, KnobSpec>>(
 		knobs.push({ key, def, min, max, label, group, hint: hints[key] ?? "", basic: !basic || basic.includes(key) });
 	}
 	tunings.set(preset, { knobs, values, features: tunings.get(preset)?.features ?? [] });
-	if (stale) save(preset);
+	// a knob the code no longer has is dropped from storage
+	if (stale || Object.keys(saved).some(key => !(key in spec))) save(preset);
 	return values as { [K in keyof T]: number };
 }
 

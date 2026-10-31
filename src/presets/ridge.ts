@@ -5,7 +5,7 @@
 import { createNoise2D } from "simplex-noise";
 import { createGlow, createKeyHue, keyHueAt } from "./effects";
 import { createConductor } from "./conductor";
-import { colourSettings, GREY, hslToRgb, palette, paletteAt } from "../colours";
+import { accentLightness, colourSettings, familyHue, GREY, hslToRgb, palette, paletteAt } from "../colours";
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
@@ -227,6 +227,8 @@ function create(): Preset {
 	let ahead = 0.3;
 	// where on the palette the music has the picture, when the colour follows the sound
 	let soundAt = 0.5;
+	// the horizon's lean towards the coming section's key, eased so a new key is joined, not jumped to
+	let skyLean = NaN;
 	let camera = 1;
 	// the dust: across (half-widths), above the ground (ridges), its place in the passing stretch (0..1), its own light
 	const dust = new Float32Array(DUST * 4);
@@ -441,12 +443,13 @@ function create(): Preset {
 				if (COLOURS.follows === "depth") return paletteAt(pal, near);
 				return paletteAt(pal, soundAt);
 			};
-			// cover palettes are turned off the row colour for the line and section rows; picked colours as picked
+			// with a cover palette the line and section rows turn towards the cover's other colours; picked colours as picked
 			const grey = pal.every(p => p.s < GREY);
-			const turn = COLOURS.mode === "cover" && !grey ? 0.14 : 0;
+			const turn = COLOURS.mode === "cover" ? 1 : 0;
 			const liveHue = keyHue(shown, viewTime, c.dt) * COLOURS.harmony;
 			const lit = tint(rel(live[LEVEL]), 1);
-			const liveRgb = hslToRgb(lit.h + liveHue + turn, grey ? lit.s : Math.min(1, lit.s + 0.08), Math.min(0.8, lit.l + 0.16));
+			const liveS = grey ? lit.s : Math.min(1, lit.s + 0.08);
+			const liveRgb = hslToRgb(familyHue(pal, lit, liveHue, turn), liveS, accentLightness(liveS, Math.min(0.8, lit.l + 0.16)));
 
 			ctx.fillStyle = "rgb(0, 0, 0)";
 			ctx.fillRect(0, 0, width, height);
@@ -461,8 +464,9 @@ function create(): Preset {
 				const strength = smoothstep((ahead - 0.1) / 0.45) * presence;
 				if (strength > 0.01) {
 					const far = tint(rel(ahead), 0);
-					const hue = far.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * COLOURS.harmony : liveHue);
-					const sky = hslToRgb(hue + turn * 0.3, far.s * 0.85, Math.min(0.7, far.l + 0.05));
+					const lean = FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * COLOURS.harmony : liveHue;
+					skyLean = Number.isNaN(skyLean) || !isPlaying ? lean : skyLean + (lean - skyLean) * Math.min(1, c.dt / 0.6);
+					const sky = hslToRgb(familyHue(pal, far, skyLean, turn * 0.3), far.s * 0.85, Math.min(0.7, far.l + 0.05));
 					// a low wide band, not a disc: SKY_HEIGHT above the far edge, a third of that below, brightest along the edge
 					const across = width * K.SKY_WIDTH;
 					for (const up of [height * K.SKY_HEIGHT, -height * K.SKY_HEIGHT * 0.33]) {
@@ -512,7 +516,7 @@ function create(): Preset {
 			//   flat     how much of its height it still has (what has been played sinks)
 			//   alpha    the line's strength
 			//   glint    how brightly its body is lit from "now" (4)
-			const row = (data: Float32Array, z: number, flat: number, alpha: number, lineWidth: number, hue: number, level: number, glint: number) => {
+			const row = (data: Float32Array, z: number, flat: number, alpha: number, lineWidth: number, lean: number, level: number, glint: number, turned = 0) => {
 				const yBase = baseAt(z);
 				const lift = (ridge / z) * flat * presence;
 				const mid = midAt(z);
@@ -532,7 +536,8 @@ function create(): Preset {
 				const far = Math.max(0, Math.min(1, (z - K.Z_NOW) / (zFar - K.Z_NOW)));
 				const base = tint(rel(level), 1 - far);
 				const sat = base.s * 0.9 * (FEATURES.height.on ? 1 - far * 0.45 : 1);
-				const rgb = hslToRgb(base.h + hue, sat, base.l * (FEATURES.height.on ? 0.42 + level * 0.5 : 0.55 + level * 0.6));
+				const hue = familyHue(pal, base, lean, turned);
+				const rgb = hslToRgb(hue, sat, base.l * (FEATURES.height.on ? 0.42 + level * 0.5 : 0.55 + level * 0.6));
 
 				// ---- 4. lit mountains ----
 				// body faintly lit from the ridge down: the light goes in the colour, never the alpha, or it stops hiding
@@ -551,7 +556,7 @@ function create(): Preset {
 				// one gradient stroke up the screen (a second stroke costs a quarter of the frame); no height, flat colour
 				ctx.lineWidth = lineWidth;
 				if (FEATURES.height.on && lift > 3) {
-					const pale = hslToRgb(base.h + hue, sat * 0.55, Math.min(0.9, base.l + 0.26));
+					const pale = hslToRgb(hue, sat * 0.55, Math.min(0.9, base.l + 0.26));
 					const up = ctx.createLinearGradient(0, yBase, 0, yBase - lift * 1.15);
 					up.addColorStop(0, rgbString(rgb, alpha));
 					up.addColorStop(1, rgbString(pale, Math.min(1, alpha * 1.7)));
@@ -582,7 +587,7 @@ function create(): Preset {
 			// (paused, it is simply where it would have got to)
 			for (let i = 0; i < POINTS + 2; i++) live[i] += (target[i] - live[i]) * (isPlaying ? chase : 1);
 			// the body takes its place in the terrain; the line is drawn last, over the rows in front of it
-			const drawLive = () => row(live, K.Z_NOW, 1, 0, 1, liveHue + turn, live[LEVEL], 0.14 + c.energy * 0.3);
+			const drawLive = () => row(live, K.Z_NOW, 1, 0, 1, liveHue, live[LEVEL], 0.14 + c.energy * 0.3, turn);
 
 			// ---- a sound has just been played: the mountains as they stand now are its echo ---------------------
 			const segs = shown?.segments;
@@ -630,7 +635,7 @@ function create(): Preset {
 							gates.set(gate, data);
 						}
 						const sure = 0.35 + Math.min(1, sections[gate].confidence) * 0.65;
-						row(data, z, playedAt(z) * sunkAt(tau) * farAt(z), farAt(z) * playedAt(z) * 0.85 * sure, Math.max(1.2, (scale * 0.003 * K.Z_NOW) / z), data[HUE] * COLOURS.harmony + turn, 1, 0);
+						row(data, z, playedAt(z) * sunkAt(tau) * farAt(z), farAt(z) * playedAt(z) * 0.85 * sure, Math.max(1.2, (scale * 0.003 * K.Z_NOW) / z), data[HUE] * COLOURS.harmony, 1, 0, turn);
 					}
 					gate--;
 				}
