@@ -1090,7 +1090,18 @@ function create(): Preset {
 				renderer = makeRenderer();
 				if (renderer) rendererLost = false;
 			}
-			if (!renderer) return;
+			if (!renderer) {
+				// a lost context is retried above; keep its last frame rather than claim WebGL is off
+				if (rendererLost) return;
+				ctx.fillStyle = "rgb(0, 0, 0)";
+				ctx.fillRect(0, 0, width, height);
+				ctx.font = `${Math.round(14 * (globalThis.devicePixelRatio || 1))}px sans-serif`;
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+				ctx.fillText("Drift needs WebGL. Turn on hardware acceleration in Spotify's settings.", width / 2, height / 2);
+				return;
+			}
 			renderer.draw(
 				width,
 				height,
