@@ -30,12 +30,12 @@ Press `T` to open the settings. They are in four tabs. Hover over any setting to
 
 ## Spicy Lyrics
 
-If you use the [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) extension, vivy can draw behind its lyrics instead of its own background: on its lyrics page, in its fullscreen and in its cinema mode. It is off until you turn it on, in one of two ways:
+If you use the [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) extension by Spikerko, vivy can draw behind its lyrics instead of its own background: on its lyrics page, in its fullscreen and in its cinema mode. It is off until you turn it on, in one of two ways:
 
 - the button with vivy's mark in Spicy Lyrics' controls (next to its settings button);
 - the *Lyrics* tab of vivy's settings, which also picks the preset and how dark the picture is, so the words stay readable.
 
-It is not drawn in the lyrics card of the side panel. Spicy Lyrics can show a track's Canvas video in its fullscreen; while vivy is on, the video is hidden and the cover is shown. Without Spicy Lyrics installed, it does nothing.
+It is not drawn in the lyrics card of the side panel. Spicy Lyrics can show a track's Canvas video in its fullscreen; while vivy is on, the video is hidden and the cover is shown. Without Spicy Lyrics installed, it does nothing. vivy uses none of Spicy Lyrics' code; it only draws into its page, so a change on their side can turn this off until vivy catches up.
 
 ## Install
 
