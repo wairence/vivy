@@ -3,13 +3,13 @@ import { createPortal } from "react-dom";
 import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "../colours";
 import { BEHIND_LYRICS_DEFAULTS, behindLyrics, setBehindLyrics } from "../behind-lyrics";
 import { PRESETS } from "../presets";
-import { currentPicture, isDefaultPicture, Picture, PICTURE_DEFAULTS, setPicture } from "./picture";
+import { currentPicture, isDefaultPicture, Picture, PICTURE_DEFAULTS, PICTURE_RANGE, setPicture } from "./picture";
 
 const BEHIND_LYRICS_HINT =
 	"A preset in place of Spicy Lyrics' own background, on its page and in its fullscreen. Needs the Spicy Lyrics extension; the button with vivy's mark in its controls turns it on and off.";
 
-// The colours, at the top of the knobs panel: cover or picked colours, and what the gradient follows.
-// The picker opens beside the panel, because the panel's scrolling would cut it off.
+// The sections of the knobs panel other than the preset's own knobs: colour, picture, lyrics.
+// The colour picker opens beside the panel, because the panel's scrolling would cut it off.
 
 type Hsv = { h: number; s: number; v: number };
 
@@ -126,16 +126,16 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 	);
 }
 
-const PICTURE_KNOBS: [keyof Picture, string, number, number, string][] = [
-	["brightness", "brightness", 0, 2, "Darker or lighter, the whole picture."],
-	["contrast", "contrast", 0, 2, "Lifts or deepens the midtones; black stays black and white stays white."],
-	["saturation", "saturation", 0, 2, "From grey to stronger colour."],
-	["transparency", "transparency", 0, 1, "Thins the black under the lines. With a theme that has a picture, the picture shows through; with Spotify's own look, the cover, blurred."]
+const PICTURE_KNOBS: [keyof Picture, string, string][] = [
+	["brightness", "brightness", "Darker or lighter, the whole picture."],
+	["contrast", "contrast", "Lifts or deepens the midtones; black stays black and white stays white."],
+	["saturation", "saturation", "From grey to stronger colour."],
+	["transparency", "transparency", "Thins the black under the lines. With a theme that has a picture, the picture shows through; with Spotify's own look, the cover, blurred."]
 ];
 
 const MODES: [ColourMode, string, string][] = [
-	["cover", "Cover", "The colours come from the album cover and change with every track"],
-	["custom", "Custom", "Your own two or three colours, the same for every track"]
+	["cover", "Cover", "The colours come from the album cover and change with every track."],
+	["custom", "Custom", "Your own two or three colours, the same for every track."]
 ];
 
 export function ColourSection({ presetId, panel, explain, unexplain }: {
@@ -240,16 +240,16 @@ export function ColourSection({ presetId, panel, explain, unexplain }: {
 			</div>
 			{editing && custom && stops[editing.i] && panel.current?.offsetParent
 				? createPortal(
-				<Picker
-					key={editing.i}
-					hex={stops[editing.i]}
-					top={editing.top}
-					right={editing.right}
-					onChange={hex => set({ stops: stops.map((s, i) => (i === editing.i ? hex : s)) })}
-					onRemove={stops.length > 2 ? () => (setEditing(null), set({ stops: stops.filter((_, i) => i !== editing.i) })) : null}
-					onClose={() => setEditing(null)}
-				/>,
-				panel.current.offsetParent
+					<Picker
+						key={editing.i}
+						hex={stops[editing.i]}
+						top={editing.top}
+						right={editing.right}
+						onChange={hex => set({ stops: stops.map((s, i) => (i === editing.i ? hex : s)) })}
+						onRemove={stops.length > 2 ? () => (setEditing(null), set({ stops: stops.filter((_, i) => i !== editing.i) })) : null}
+						onClose={() => setEditing(null)}
+					/>,
+					panel.current.offsetParent
 				)
 				: null}
 		</>
@@ -258,13 +258,13 @@ export function ColourSection({ presetId, panel, explain, unexplain }: {
 
 type Explain = { explain: (text: string, row: HTMLElement) => void; unexplain: () => void };
 
-// Brightness, contrast, saturation and transparency, for every preset.
+// Brightness, contrast, saturation and transparency, for every preset; the frame rate is added by the panel.
 export function PictureSection({ explain, unexplain }: Explain) {
 	const [, redraw] = useState(0);
 	const refresh = () => redraw(n => n + 1);
 	return (
 		<>
-			{PICTURE_KNOBS.map(([key, name, min, max, what]) => (
+			{PICTURE_KNOBS.map(([key, name, what]) => (
 				<div
 					key={key}
 					className="vivy-tune-knob"
@@ -275,7 +275,7 @@ export function PictureSection({ explain, unexplain }: Explain) {
 						<span>{name}</span>
 						<span>{currentPicture()[key].toFixed(2)}</span>
 					</div>
-					<input type="range" min={min} max={max} step={0.01} value={currentPicture()[key]} onChange={e => (setPicture({ [key]: Number(e.target.value) }), refresh())} />
+					<input type="range" min={PICTURE_RANGE[key][0]} max={PICTURE_RANGE[key][1]} step={0.01} value={currentPicture()[key]} onChange={e => (setPicture({ [key]: Number(e.target.value) }), refresh())} />
 				</div>
 			))}
 			<div className="vivy-seg">

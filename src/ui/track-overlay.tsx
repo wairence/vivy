@@ -41,9 +41,17 @@ export function TrackOverlay({ track, isFullscreen }: { track: Track | null; isF
 		bar.setPointerCapture(e.pointerId);
 		setScrub(at(e.clientX));
 		const move = (ev: PointerEvent) => setScrub(at(ev.clientX));
-		const up = (ev: PointerEvent) => {
+		const stop = () => {
 			bar.removeEventListener("pointermove", move);
 			bar.removeEventListener("pointerup", up);
+			bar.removeEventListener("pointercancel", cancel);
+		};
+		const cancel = () => {
+			stop();
+			setScrub(null);
+		};
+		const up = (ev: PointerEvent) => {
+			stop();
 			const ms = at(ev.clientX) * (track?.durationMs ?? 0);
 			Spicetify.Player.seek(ms);
 			setProgressMs(ms);
@@ -51,6 +59,7 @@ export function TrackOverlay({ track, isFullscreen }: { track: Track | null; isF
 		};
 		bar.addEventListener("pointermove", move);
 		bar.addEventListener("pointerup", up);
+		bar.addEventListener("pointercancel", cancel);
 	};
 
 	if (!track)

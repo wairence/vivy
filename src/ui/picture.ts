@@ -6,13 +6,14 @@ export type Picture = { brightness: number; contrast: number; saturation: number
 export const PICTURE_DEFAULTS: Picture = { brightness: 1, contrast: 1, saturation: 1, transparency: 0 };
 
 const STORAGE_KEY = "vivy:picture";
+export const PICTURE_RANGE: Record<keyof Picture, [number, number]> = { brightness: [0, 2], contrast: [0, 2], saturation: [0, 2], transparency: [0, 1] };
 
 export function storedPicture(): Picture {
 	try {
 		const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
 		const picture = { ...PICTURE_DEFAULTS };
 		for (const key of Object.keys(picture) as (keyof Picture)[])
-			if (typeof stored?.[key] === "number" && Number.isFinite(stored[key])) picture[key] = stored[key];
+			if (typeof stored?.[key] === "number" && Number.isFinite(stored[key])) picture[key] = Math.max(PICTURE_RANGE[key][0], Math.min(PICTURE_RANGE[key][1], stored[key]));
 		return picture;
 	} catch {
 		return { ...PICTURE_DEFAULTS };
@@ -86,7 +87,7 @@ export function isStockTheme(): boolean {
 
 function coverUrl(): string | null {
 	const meta = Spicetify.Player.data?.item?.metadata;
-	// the small size: blurred over the whole page it looks the same and loads at once
+	// the medium size: blurred over the whole page, a large one looks the same
 	const url = meta?.image_url || meta?.image_large_url;
 	if (!url) return null;
 	return url.startsWith("spotify:image:") ? "https://i.scdn.co/image/" + url.slice(14) : url;
@@ -96,9 +97,8 @@ function coverUrl(): string | null {
 const COVER_LOOK = "blur(15px) contrast(0.5) saturate(0.7) brightness(1.2)";
 const COVER_OPACITY = 0.55;
 
-// What shows under a transparent preset. On the stock theme: the cover over black, as strong as
-// `transparency`. With a theme: black thinned to `transparency`, and true is returned, because then
-// the theme's own picture has to show through.
+// What shows under a transparent preset: on the stock theme the cover over black, as strong as
+// `transparency`; with a theme black thinned by it, and true says the theme's picture must show through.
 export function paintBackdrop(el: HTMLElement, transparency: number): boolean {
 	const cover = transparency && isStockTheme() ? coverUrl() : null;
 	el.style.background = transparency && !cover ? `rgba(0, 0, 0, ${1 - transparency})` : "#000";
@@ -117,14 +117,20 @@ export function paintBackdrop(el: HTMLElement, transparency: number): boolean {
 	return false;
 }
 
-// Themes with a picture keep it under the whole window and paint the main view solid over it, and
-// Spotify isolates the page, which keeps a blend from reaching the picture. While this page is open,
-// its wrappers up to the window's top container go clear and stop isolating (see .vivy-see-through).
+// A theme's picture sits under the whole window with the main view painted solid over it, and the
+// page is isolated, so a blend never reaches it: while open, the page's wrappers go clear (.vivy-see-through).
 const SEE_THROUGH = "vivy-see-through";
+// only the elements marked here are cleared again: the Spicy Lyrics extension uses the same class
+let marked: Element[] = [];
 function seeThroughPage(on: boolean) {
-	document.querySelectorAll(`.${SEE_THROUGH}`).forEach(el => el.classList.remove(SEE_THROUGH));
+	marked.forEach(el => el.classList.remove(SEE_THROUGH));
+	marked = [];
 	if (!on || !target) return;
-	for (let el = target.container.parentElement; el && !el.matches(".Root__top-container, body"); el = el.parentElement) el.classList.add(SEE_THROUGH);
+	for (let el = target.container.parentElement; el && !el.matches(".Root__top-container, body"); el = el.parentElement) {
+		if (el.classList.contains(SEE_THROUGH)) continue;
+		el.classList.add(SEE_THROUGH);
+		marked.push(el);
+	}
 }
 
 export function showPictureOn(canvas: HTMLCanvasElement, container: HTMLElement, backdrop: HTMLElement) {

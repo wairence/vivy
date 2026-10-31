@@ -80,8 +80,8 @@ export default function App() {
 			const digit = /^[1-9]$/.test(key);
 			if ((key !== "b" || !DEV) && key !== "p" && key !== "t" && key !== "f" && !digit) return;
 			const target = e.target as HTMLElement | null;
-			// never steal a keystroke from a search box
-			if (target && (target.isContentEditable || /^(input|textarea)$/i.test(target.tagName))) return;
+			// never steal a keystroke from a text field; a slider or checkbox keeps focus after a click and takes no letters
+			if (target && (target.isContentEditable || target.matches?.("textarea, input:not([type=range], [type=checkbox], [type=radio])"))) return;
 			e.preventDefault();
 			if (digit) window.dispatchEvent(new CustomEvent("visualizer-feature", { detail: { preset: presetIdRef.current, n: Number(key) } }));
 			else if (key === "p") toggleMiniWindow();
