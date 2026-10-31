@@ -134,10 +134,13 @@ export function watchTrackData(onTrack: (track: Track | null) => void = () => {}
 			.catch(single);
 	};
 
-	const onSongChange = (event?: Event & { data: Spicetify.PlayerState }) => updateTrack(event?.data);
+	const onSongChange = (event?: Event & { data: Spicetify.PlayerState }) => {
+		window.clearInterval(waitForFirst);
+		updateTrack(event?.data);
+	};
 	Spicetify.Player.addEventListener("songchange", onSongChange);
 	updateTrack(Spicetify.Player.data);
-	// loaded before the player knows its track: the first one arrives without a songchange
+	// loaded before the player knows its track: the first one may arrive without a songchange
 	const waitForFirst = Spicetify.Player.data?.item
 		? 0
 		: window.setInterval(() => {

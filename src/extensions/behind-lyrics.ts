@@ -5,11 +5,23 @@ import { BehindLyrics, behindLyrics, onBehindLyricsChange, setBehindLyrics } fro
 import { Rgb } from "../colours";
 import { createFramePacer, frameRate, renderSize } from "../frame-rate";
 import { Preset, PRESETS } from "../presets";
-import { watchTrackData } from "../track-data";
+import { DEFAULT_COVER, watchTrackData } from "../track-data";
 import { paintBackdrop, storedPicture } from "../ui/picture";
 
-// Spicy Lyrics' page background host; the same box in the side panel's lyrics card is left alone.
-const PAGE_HOST = "#SpicyLyricsPage .ContentBox";
+// Every piece of Spicy Lyrics' markup this relies on. If one goes, the feature does nothing rather than break.
+const SPICY = {
+	// their background's box, on the page and in fullscreen; the same box in the side panel's card is left alone
+	host: "#SpicyLyricsPage .ContentBox",
+	sidePanel: "aside",
+	background: ".spicy-dynamic-bg",
+	canvasVideo: ".CanvasStage, .CanvasAmbient",
+	// set while a track's Canvas video plays in their fullscreen, where it hides the cover
+	videoPage: "#SpicyLyricsPage.CanvasImmersive",
+	cover: ".MediaImageContainer",
+	controls: "#SpicyLyricsPage .ViewControls",
+	controlClass: "ViewControl",
+	settingsButton: "#SettingsToggle"
+};
 const HOST_CLASS = "vivy-behind-lyrics";
 const CANVAS_CLASS = "vivy-lyrics-canvas";
 const SHADE_CLASS = "vivy-lyrics-shade";
@@ -17,8 +29,8 @@ const SEE_THROUGH = "vivy-lyrics-see-through";
 // A track's Canvas video takes the cover's place in their fullscreen; ours replaces the video, so the cover comes back.
 // With the picture's transparency the page's wrappers go clear and stop isolating, as on vivy's own page.
 const STYLE = `
-.${HOST_CLASS} > :is(.spicy-dynamic-bg, .CanvasStage, .CanvasAmbient) { visibility: hidden; }
-#SpicyLyricsPage.CanvasImmersive:has(.${HOST_CLASS}) .MediaContent { opacity: 1 !important; }
+.${HOST_CLASS} > :is(${SPICY.background}, ${SPICY.canvasVideo}) { visibility: hidden; }
+${SPICY.videoPage}:has(.${HOST_CLASS}) ${SPICY.cover} { opacity: 1 !important; scale: none !important; }
 :is(.${CANVAS_CLASS}, .${SHADE_CLASS}) { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .${SEE_THROUGH} { background: transparent !important; isolation: auto !important; z-index: auto !important; will-change: auto !important; }`;
 
@@ -31,18 +43,23 @@ const themePictureKey = () => {
 	return root ? getComputedStyle(root, "::before").backgroundImage + getComputedStyle(root, "::after").backgroundImage : "";
 };
 
+// Mid-fade a theme's picture reads as cross-fade(), which an inline style rejects, and with the window
+// hidden by cinema mode the fade never ends: the picture it fades to is taken.
+const fadingTo = (image: string) => (image.startsWith("cross-fade(") ? (image.match(/url\("[^"]*"\)(?=\)$)/)?.[0] ?? "none") : image);
+
 function copyThemePicture(into: HTMLElement, transparency: number) {
 	const root = document.querySelector(THEME_LAYERS);
 	if (!root) return;
 	into.style.background = getComputedStyle(root).backgroundColor;
 	for (const pseudo of ["::before", "::after"]) {
 		const s = getComputedStyle(root, pseudo);
-		if (s.backgroundImage === "none") continue;
+		const image = fadingTo(s.backgroundImage);
+		if (image === "none") continue;
 		const layer = document.createElement("div");
 		Object.assign(layer.style, {
 			position: "absolute",
 			inset: "0",
-			backgroundImage: s.backgroundImage,
+			backgroundImage: image,
 			backgroundSize: s.backgroundSize,
 			backgroundPosition: s.backgroundPosition,
 			backgroundRepeat: s.backgroundRepeat,
@@ -60,15 +77,15 @@ function paintSlot(host: Element, slot: Pick<Slot, "shade" | "inWindow" | "copie
 	const { transparency } = storedPicture();
 	slot.shade.replaceChildren();
 	slot.inWindow = !!host.closest(THEME_LAYERS);
+	slot.copied = slot.inWindow ? "" : themePictureKey();
 	if (!paintBackdrop(slot.shade, transparency)) return;
 	seeThroughFrom(slot.inWindow ? host : null);
-	slot.copied = slot.inWindow ? "" : themePictureKey();
 	if (!slot.inWindow) copyThemePicture(slot.shade, transparency);
 }
 
 function seeThroughFrom(host: Element | null) {
 	document.querySelectorAll(`.${SEE_THROUGH}`).forEach(el => el.classList.remove(SEE_THROUGH));
-	for (let el = host; el && !el.matches(".Root__top-container, body"); el = el.parentElement) el.classList.add(SEE_THROUGH);
+	for (let el = host; el && !el.matches(`${THEME_LAYERS}, body`); el = el.parentElement) el.classList.add(SEE_THROUGH);
 }
 const SCAN_MS = 500;
 
@@ -79,7 +96,7 @@ const onVivyPage = () => Spicetify.Platform?.History?.location?.pathname?.starts
 function hosts(): Element[] {
 	// the app draws its own picture; two at once would only cost
 	if (onVivyPage()) return [];
-	return [...document.querySelectorAll(PAGE_HOST)].filter(el => !el.closest("aside"));
+	return [...document.querySelectorAll(SPICY.host)].filter(el => !el.closest(SPICY.sidePanel));
 }
 
 function start(initial: BehindLyrics) {
@@ -87,11 +104,18 @@ function start(initial: BehindLyrics) {
 	const style = document.createElement("style");
 	style.textContent = STYLE;
 	document.head.append(style);
-	const track = watchTrackData(undefined, true);
-	const audioSync = new AudioSync();
+	// Only while something is drawn: the track's analysis and colours, and the latency reading, whose
+	// inaudible tone keeps an audio stream open. Spicy Lyrics may be missing or its page never opened.
+	let drawing: { track: ReturnType<typeof watchTrackData>; audioSync: AudioSync } | null = null;
+	const stopDrawing = () => {
+		drawing?.track.dispose();
+		drawing?.audioSync.dispose();
+		drawing = null;
+	};
 	const pace = createFramePacer();
 	const slots = new Map<Element, Slot>();
-	let shown: Rgb[] = track.cover().slice();
+	// kept between visits to their page, so it opens in the last colours rather than green
+	let shown: Rgb[] = DEFAULT_COVER.slice();
 	let lastColourAt = performance.now();
 	let requestId = 0;
 
@@ -106,6 +130,8 @@ function start(initial: BehindLyrics) {
 	};
 	const mount = (host: Element) => {
 		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d", { alpha: false });
+		if (!ctx) return;
 		canvas.className = CANVAS_CLASS;
 		canvas.style.filter = settings.dim ? `brightness(${1 - settings.dim})` : "";
 		// the black under the picture, thinned by the picture's transparency
@@ -113,29 +139,30 @@ function start(initial: BehindLyrics) {
 		shade.className = SHADE_CLASS;
 		const { transparency } = storedPicture();
 		if (transparency) canvas.style.mixBlendMode = "screen";
-		const theirs = host.querySelector(":scope > .spicy-dynamic-bg");
+		const theirs = host.querySelector(`:scope > ${SPICY.background}`);
 		if (theirs) theirs.after(shade, canvas);
 		else host.prepend(shade, canvas);
 		host.classList.add(HOST_CLASS);
-		const ctx = canvas.getContext("2d", { alpha: false });
-		if (!ctx) return (canvas.remove(), shade.remove());
 		const slot = { canvas, shade, inWindow: true, copied: "" };
 		paintSlot(host, slot);
 		slots.set(host, { ...slot, ctx, preset: definition().create(), clock: createSmoothClock() });
+		drawing ??= { track: watchTrackData(undefined, true), audioSync: new AudioSync() };
 	};
 
 	const render = () => {
 		requestId = slots.size ? requestAnimationFrame(render) : 0;
-		if (!pace(performance.now(), frameRate())) return;
+		if (!drawing || !pace(performance.now(), frameRate())) return;
+		const { track, audioSync } = drawing;
 		const wall = performance.now();
 		const colourStep = 1 - Math.exp(-Math.min(0.1, (wall - lastColourAt) / 1000) / 0.6);
 		lastColourAt = wall;
 		const target = track.cover();
-		shown = shown.map((d, i) => ({
-			r: d.r + (target[i].r - d.r) * colourStep,
-			g: d.g + (target[i].g - d.g) * colourStep,
-			b: d.b + (target[i].b - d.b) * colourStep
-		}));
+		if (target !== DEFAULT_COVER)
+			shown = shown.map((d, i) => ({
+				r: d.r + (target[i].r - d.r) * colourStep,
+				g: d.g + (target[i].g - d.g) * colourStep,
+				b: d.b + (target[i].b - d.b) * colourStep
+			}));
 		const isPlaying = Spicetify.Player.isPlaying();
 		const playerSec = Spicetify.Player.getProgress() / 1000;
 		for (const slot of slots.values()) {
@@ -171,6 +198,7 @@ function start(initial: BehindLyrics) {
 		for (const [host, slot] of slots)
 			if (slot.inWindow !== !!host.closest(THEME_LAYERS) || (!slot.inWindow && slot.copied !== themePictureKey())) paintSlot(host, slot);
 		if (slots.size && !requestId) requestId = requestAnimationFrame(render);
+		if (!slots.size) stopDrawing();
 	};
 	const scanId = window.setInterval(scan, SCAN_MS);
 	scan();
@@ -195,8 +223,7 @@ function start(initial: BehindLyrics) {
 			Spicetify.Player.removeEventListener("songchange", repaint);
 			cancelAnimationFrame(requestId);
 			for (const [host, slot] of slots) unmount(host, slot);
-			track.dispose();
-			audioSync.dispose();
+			stopDrawing();
 			style.remove();
 		}
 	};
@@ -226,14 +253,14 @@ const VIVY_MARK =
 	'<path d="M14.6 1.8L2.6 9.6L9.4 22.2L21.4 14Z M14.6 1.8L11.6 14.3L9.4 22.2 M2.6 9.6L11.6 14.3L21.4 14"/></svg>';
 
 function placeToggle() {
-	const controls = [...document.querySelectorAll("#SpicyLyricsPage .ViewControls")].find(el => !el.closest("aside"));
+	const controls = [...document.querySelectorAll(SPICY.controls)].find(el => !el.closest(SPICY.sidePanel));
 	if (!controls || controls.querySelector(`#${TOGGLE_ID}`)) return;
 	const button = document.createElement("button");
 	button.id = TOGGLE_ID;
-	button.className = "ViewControl";
+	button.className = SPICY.controlClass;
 	button.innerHTML = VIVY_MARK;
 	button.addEventListener("click", () => setBehindLyrics({ on: !behindLyrics().on }));
-	controls.insertBefore(button, controls.querySelector("#SettingsToggle"));
+	controls.insertBefore(button, controls.querySelector(SPICY.settingsButton));
 	showToggleState(behindLyrics());
 }
 
