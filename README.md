@@ -18,11 +18,24 @@ The picture is driven by Spotify's audio analysis of the track (notes, beats, ba
 
 ## Settings
 
-Press `T` for the settings of the preset on screen. The main ones are shown first, the rest are under *More settings*. Hover over any of them to see what it does.
+Press `T` to open the settings. They are in four tabs. Hover over any setting to see what it does.
 
-Colours: *Cover* takes them from the album art, *Custom* lets you pick two or three of your own. *Gradient follows* sets what moves a colour from the first to the last, for example the height of the mountains or how loud the music is. Each preset keeps its own colours.
+**Preset.** The sliders and effects of the preset on screen. The main ones are shown first, the rest are under *More settings*.
 
-Frame rate, under *More settings*: 30, 60, 120 or *Monitor* (every frame the screen shows, the default). A lower rate takes load off the graphics card on a fast monitor; the motion keeps its speed and only gets less smooth.
+**Colour.** *Cover* takes the colours from the album art, *Custom* lets you pick two or three of your own. *Gradient follows* sets what moves a colour from the first to the last, for example the height of the mountains or how loud the music is. Each preset keeps its own colours.
+
+**Picture.** Brightness, contrast, saturation and transparency, for every preset, and the frame rate. Transparency thins out the black behind the lines. With a Spicetify theme that has a background picture, the picture shows through. On Spotify's own look there is none, so the album cover shows instead, blurred. The frame rate is 30, 60, 120 or *Monitor* (every frame the screen shows, the default). A lower rate takes load off the graphics card on a fast monitor; the motion keeps its speed and only gets less smooth.
+
+**Lyrics.** Draws vivy behind Spicy Lyrics, see below.
+
+## Spicy Lyrics
+
+If you use the [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) extension, vivy can draw behind its lyrics instead of its own background: on its lyrics page, in its fullscreen and in its cinema mode. It is off until you turn it on, in one of two ways:
+
+- the button with vivy's mark in Spicy Lyrics' controls (next to its settings button);
+- the *Lyrics* tab of vivy's settings, which also picks the preset and how dark the picture is, so the words stay readable.
+
+It is not drawn in the lyrics card of the side panel. Spicy Lyrics can show a track's Canvas video in its fullscreen; while vivy is on, the video is hidden and the cover is shown. Without Spicy Lyrics installed, it does nothing.
 
 ## Install
 
@@ -31,13 +44,15 @@ vivy needs [Spicetify](https://spicetify.app). If you don't have it, install it 
 Then:
 
 1. Download `vivy.zip` from the [latest release](https://github.com/wairence/vivy/releases/latest).
-2. Unzip it into Spicetify's `CustomApps` folder, so you have a `vivy` folder with `index.js`, `manifest.json` and `style.css` inside. The folder is `%APPDATA%\spicetify\CustomApps\vivy` on Windows and `~/.config/spicetify/CustomApps/vivy` on macOS and Linux.
+2. Unzip it into Spicetify's `CustomApps` folder, so you have a `vivy` folder with everything from the zip in it (`index.js`, `behind-lyrics.js`, `manifest.json`, `style.css`). The folder is `%APPDATA%\spicetify\CustomApps\vivy` on Windows and `~/.config/spicetify/CustomApps/vivy` on macOS and Linux.
 3. Run these two commands:
 
 ```bash
 spicetify config custom_apps vivy
 spicetify apply
 ```
+
+To update, unzip the new release over the old folder and run `spicetify apply` again.
 
 To remove it, run `spicetify config custom_apps vivy-`, then `spicetify apply`, and delete the folder.
 
@@ -66,9 +81,11 @@ vivy only talks to Spotify:
 - It fetches each track's analysis using your logged-in session.
 - It takes the cover colour through Spicetify.
 - It reads the cover image to find its colours.
-- It stores the chosen preset, slider values, colours and mini window position in Spotify's local storage.
+- It stores the chosen preset, slider values, colours, picture settings, the Spicy Lyrics setting and mini window position in Spotify's local storage.
 
 There is no analytics and no other server. It plays an inaudible tone to keep the audio device awake, which it needs to measure output latency. Nothing is recorded.
+
+The Spicy Lyrics part is a second file, `behind-lyrics.js`, which Spotify loads at startup. While it is off it does nothing but add its button to Spicy Lyrics' controls.
 
 ## Development
 
