@@ -120,10 +120,17 @@ export function paintBackdrop(el: HTMLElement, transparency: number): boolean {
 // A theme's picture sits under the whole window with the main view painted solid over it, and the
 // page is isolated, so a blend never reaches it: while open, the page's wrappers go clear (.vivy-see-through).
 const SEE_THROUGH = "vivy-see-through";
+// only the elements marked here are cleared again: the Spicy Lyrics extension uses the same class
+let marked: Element[] = [];
 function seeThroughPage(on: boolean) {
-	document.querySelectorAll(`.${SEE_THROUGH}`).forEach(el => el.classList.remove(SEE_THROUGH));
+	marked.forEach(el => el.classList.remove(SEE_THROUGH));
+	marked = [];
 	if (!on || !target) return;
-	for (let el = target.container.parentElement; el && !el.matches(".Root__top-container, body"); el = el.parentElement) el.classList.add(SEE_THROUGH);
+	for (let el = target.container.parentElement; el && !el.matches(".Root__top-container, body"); el = el.parentElement) {
+		if (el.classList.contains(SEE_THROUGH)) continue;
+		el.classList.add(SEE_THROUGH);
+		marked.push(el);
+	}
 }
 
 export function showPictureOn(canvas: HTMLCanvasElement, container: HTMLElement, backdrop: HTMLElement) {
