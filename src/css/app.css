@@ -430,6 +430,11 @@
 	color: #fff;
 }
 
+.vivy-seg button:disabled {
+	color: rgba(255, 255, 255, 0.3);
+	cursor: default;
+}
+
 .vivy-seg button.on {
 	color: var(--vivy-accent);
 	background: var(--vivy-accent-tint);

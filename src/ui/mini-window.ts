@@ -48,7 +48,7 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 		if (!pip || closed) return;
 		pip.removeEventListener("resize", hooks.onResize);
 		pip = null;
-		canvas.style.cssText = "";
+		Object.assign(canvas.style, { display: "", width: "", height: "" });
 		container?.prepend(canvas);
 		hooks.onMove(false);
 	};
@@ -76,7 +76,8 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 				doc.title = "vivy";
 				doc.body.style.cssText = "margin:0;background:#000;overflow:hidden";
 				// the stylesheet stays in Spotify's document
-				canvas.style.cssText = "display:block;width:100vw;height:100vh";
+				// set one by one: the picture's filter and opacity are inline styles too
+				Object.assign(canvas.style, { display: "block", width: "100vw", height: "100vh" });
 				doc.body.append(canvas);
 				if (place && Number.isFinite(place.x) && Number.isFinite(place.y)) {
 					try {

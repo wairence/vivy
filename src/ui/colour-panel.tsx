@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "../colours";
+import { currentPicture, isDefaultPicture, Picture, PICTURE_DEFAULTS, setPicture } from "./picture";
 
 // The colours, at the top of the knobs panel: cover or picked colours, and what the gradient follows.
 // The picker opens beside the panel, because the panel's scrolling would cut it off.
@@ -120,6 +121,13 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 	);
 }
 
+const PICTURE_KNOBS: [keyof Picture, string, number, number, string][] = [
+	["brightness", "brightness", 0, 2, "Darker or lighter, the whole picture."],
+	["contrast", "contrast", 0, 2, "Flatter or harder, the whole picture."],
+	["saturation", "saturation", 0, 2, "From grey to stronger colour."],
+	["transparency", "transparency", 0, 1, "Lets the Spotify theme behind the page show through."]
+];
+
 const MODES: [ColourMode, string, string][] = [
 	["cover", "Cover", "The colours come from the album cover and change with every track"],
 	["custom", "Custom", "Your own two or three colours, the same for every track"]
@@ -225,6 +233,26 @@ export function ColourSection({ presetId, panel, explain, unexplain }: {
 					<span>{colours.harmony.toFixed(2)}</span>
 				</div>
 				<input type="range" min={0} max={1} step={0.01} value={colours.harmony} onChange={e => set({ harmony: Number(e.target.value) })} />
+			</div>
+			<div className="vivy-tune-sub">picture</div>
+			{PICTURE_KNOBS.map(([key, name, min, max, what]) => (
+				<div
+					key={key}
+					className="vivy-tune-knob"
+					onMouseEnter={e => explain(`${what} Applies to every preset. Double-click the name to reset.`, e.currentTarget)}
+					onMouseLeave={unexplain}
+				>
+					<div className="vivy-tune-label" onDoubleClick={() => (setPicture({ [key]: PICTURE_DEFAULTS[key] }), refresh())}>
+						<span>{name}</span>
+						<span>{currentPicture()[key].toFixed(2)}</span>
+					</div>
+					<input type="range" min={min} max={max} step={0.01} value={currentPicture()[key]} onChange={e => (setPicture({ [key]: Number(e.target.value) }), refresh())} />
+				</div>
+			))}
+			<div className="vivy-seg">
+				<button disabled={isDefaultPicture()} onClick={() => (setPicture(PICTURE_DEFAULTS), refresh())}>
+					Reset picture
+				</button>
 			</div>
 			{editing && custom && stops[editing.i] && panel.current?.offsetParent
 				? createPortal(
