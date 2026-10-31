@@ -5,7 +5,7 @@ import { BehindLyrics, behindLyrics, onBehindLyricsChange, setBehindLyrics } fro
 import { Rgb } from "../colours";
 import { createFramePacer, frameRate, renderSize } from "../frame-rate";
 import { Preset, PRESETS } from "../presets";
-import { watchTrackData } from "../track-data";
+import { DEFAULT_COVER, watchTrackData } from "../track-data";
 import { paintBackdrop, storedPicture } from "../ui/picture";
 
 // Every piece of Spicy Lyrics' markup this relies on. If one goes, the feature does nothing rather than break.
@@ -104,12 +104,18 @@ function start(initial: BehindLyrics) {
 	const style = document.createElement("style");
 	style.textContent = STYLE;
 	document.head.append(style);
-	const track = watchTrackData(undefined, true);
-	// its inaudible tone keeps an audio stream open, so only while something is drawn
-	let audioSync: AudioSync | null = null;
+	// Only while something is drawn: the track's analysis and colours, and the latency reading, whose
+	// inaudible tone keeps an audio stream open. Spicy Lyrics may be missing or its page never opened.
+	let drawing: { track: ReturnType<typeof watchTrackData>; audioSync: AudioSync } | null = null;
+	const stopDrawing = () => {
+		drawing?.track.dispose();
+		drawing?.audioSync.dispose();
+		drawing = null;
+	};
 	const pace = createFramePacer();
 	const slots = new Map<Element, Slot>();
-	let shown: Rgb[] = track.cover().slice();
+	// kept between visits to their page, so it opens in the last colours rather than green
+	let shown: Rgb[] = DEFAULT_COVER.slice();
 	let lastColourAt = performance.now();
 	let requestId = 0;
 
@@ -121,10 +127,6 @@ function start(initial: BehindLyrics) {
 		host.classList.remove(HOST_CLASS);
 		slots.delete(host);
 		seeThroughFrom(null);
-		if (!slots.size) {
-			audioSync?.dispose();
-			audioSync = null;
-		}
 	};
 	const mount = (host: Element) => {
 		const canvas = document.createElement("canvas");
@@ -144,21 +146,23 @@ function start(initial: BehindLyrics) {
 		const slot = { canvas, shade, inWindow: true, copied: "" };
 		paintSlot(host, slot);
 		slots.set(host, { ...slot, ctx, preset: definition().create(), clock: createSmoothClock() });
-		audioSync ??= new AudioSync();
+		drawing ??= { track: watchTrackData(undefined, true), audioSync: new AudioSync() };
 	};
 
 	const render = () => {
 		requestId = slots.size ? requestAnimationFrame(render) : 0;
-		if (!pace(performance.now(), frameRate())) return;
+		if (!drawing || !pace(performance.now(), frameRate())) return;
+		const { track, audioSync } = drawing;
 		const wall = performance.now();
 		const colourStep = 1 - Math.exp(-Math.min(0.1, (wall - lastColourAt) / 1000) / 0.6);
 		lastColourAt = wall;
 		const target = track.cover();
-		shown = shown.map((d, i) => ({
-			r: d.r + (target[i].r - d.r) * colourStep,
-			g: d.g + (target[i].g - d.g) * colourStep,
-			b: d.b + (target[i].b - d.b) * colourStep
-		}));
+		if (target !== DEFAULT_COVER)
+			shown = shown.map((d, i) => ({
+				r: d.r + (target[i].r - d.r) * colourStep,
+				g: d.g + (target[i].g - d.g) * colourStep,
+				b: d.b + (target[i].b - d.b) * colourStep
+			}));
 		const isPlaying = Spicetify.Player.isPlaying();
 		const playerSec = Spicetify.Player.getProgress() / 1000;
 		for (const slot of slots.values()) {
@@ -173,7 +177,7 @@ function start(initial: BehindLyrics) {
 					ctx: slot.ctx,
 					width: w,
 					height: h,
-					progressSec: slot.clock(playerSec, isPlaying, wall / 1000) - (audioSync?.getLatencySec() ?? 0),
+					progressSec: slot.clock(playerSec, isPlaying, wall / 1000) - audioSync.getLatencySec(),
 					isPlaying,
 					audio: track.audio(),
 					colorRgb: shown[1],
@@ -194,6 +198,7 @@ function start(initial: BehindLyrics) {
 		for (const [host, slot] of slots)
 			if (slot.inWindow !== !!host.closest(THEME_LAYERS) || (!slot.inWindow && slot.copied !== themePictureKey())) paintSlot(host, slot);
 		if (slots.size && !requestId) requestId = requestAnimationFrame(render);
+		if (!slots.size) stopDrawing();
 	};
 	const scanId = window.setInterval(scan, SCAN_MS);
 	scan();
@@ -218,7 +223,7 @@ function start(initial: BehindLyrics) {
 			Spicetify.Player.removeEventListener("songchange", repaint);
 			cancelAnimationFrame(requestId);
 			for (const [host, slot] of slots) unmount(host, slot);
-			track.dispose();
+			stopDrawing();
 			style.remove();
 		}
 	};
