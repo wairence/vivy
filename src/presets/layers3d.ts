@@ -6,9 +6,9 @@
 //   the sheet    hairlines, ~3 s life: the loudness now
 //   the marks    one per sound, shaped by that sound
 import { createNoise3D } from "simplex-noise";
-import { createGlow, createKeyHue, shimmerPhase, shimmerTint } from "./effects";
+import { createGlow, createKeyHue, shimmerHue, shimmerPhase } from "./effects";
 import { createConductor } from "./conductor";
-import { colourSettings, distinctCover, Hsl, hslToRgb, palette, paletteAt, Rgb } from "../colours";
+import { colourSettings, distinctCover, familyHue, Hsl, hslToRgb, palette, paletteAt, Rgb } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition, publishDiagnostics } from "./types";
 import { tune, tuneVersion } from "./tune";
@@ -642,13 +642,13 @@ function create(): Preset {
 			const byDepth = COLOURS.follows === "depth";
 			const bySound = COLOURS.follows === "sounds";
 			const along = (t: number) => paletteAt(pal, COLOURS.follows === "music" ? t * 0.3 + soundAt * 0.7 : t);
-			// cover palettes are spread a little round the wheel between layers
+			// with a cover palette the sheet and the marks turn towards the cover's other colours
 			const turn = COLOURS.mode === "cover" ? 1 : 0;
 			const key = keyHue(audio, progressSec, c.dt) * COLOURS.harmony;
 			const shimmer = shimmerPhase(fieldTime);
-			const groundOf = (g: Hsl) => shimmerTint(hslToRgb(g.h + key, g.s * 0.7, g.l * 0.62), shimmer, tintPulse * 0.4);
-			const sheetOf = (sh: Hsl) => shimmerTint(hslToRgb(sh.h + key + 0.06 * turn, sh.s, sh.l), shimmer, tintPulse);
-			const markOf = (m: Hsl) => shimmerTint(hslToRgb(m.h + key + 0.14 * turn, Math.min(1, m.s + 0.08), Math.min(0.78, m.l + 0.14)), shimmer, tintPulse);
+			const groundOf = (g: Hsl) => hslToRgb(familyHue(pal, g, key + shimmerHue(shimmer, tintPulse * 0.4)), g.s * 0.7, g.l * 0.62);
+			const sheetOf = (sh: Hsl) => hslToRgb(familyHue(pal, sh, key + shimmerHue(shimmer, tintPulse), 0.5 * turn), sh.s, sh.l);
+			const markOf = (m: Hsl) => hslToRgb(familyHue(pal, m, key + shimmerHue(shimmer, tintPulse), turn), Math.min(1, m.s + 0.08), Math.min(0.78, m.l + 0.14));
 			const groundRgb = groundOf(along(0));
 			const sheetRgb = sheetOf(along(byDepth ? 0 : 0.5));
 			const markRgb = markOf(along(byDepth || bySound ? 0 : 1));

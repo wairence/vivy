@@ -156,6 +156,23 @@ export function paletteAt(p: Hsl[], t: number): Hsl {
 	return { h, s: a.s + (b.s - a.s) * f, l: a.l + (b.l - a.l) * f };
 }
 
+// the furthest a drawn hue may end from the palette, in turns; past it a red cover drew green lines
+export const HUE_REACH = 30 / 360;
+const wrapTurn = (d: number) => (((d % 1) + 1.5) % 1) - 0.5;
+
+// the hue to draw: `base` (a point on the palette) leaned by `lean` and turned towards the palette's other colours by
+// `turn` (0..1), never further than HUE_REACH off. Each other colour pulls by its distance, fading out at its own hue and
+// opposite it, so the pull has no step as the base moves; a palette of one hue has nothing to turn to.
+export function familyHue(pal: Hsl[], base: Hsl, lean: number, turn = 0): number {
+	let pull = 0;
+	if (turn > 0)
+		for (const c of pal) {
+			const d = wrapTurn(c.h - base.h);
+			pull += d * (1 - 4 * d * d) ** 2 * Math.max(0, Math.min(1, (c.s - GREY) / 0.1));
+		}
+	return base.h + Math.max(-HUE_REACH, Math.min(HUE_REACH, lean + pull * turn));
+}
+
 export function rgbToHsl({ r, g, b }: Rgb): Hsl {
 	const rn = r / 255;
 	const gn = g / 255;
