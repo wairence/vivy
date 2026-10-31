@@ -5,7 +5,7 @@
 import { createNoise2D } from "simplex-noise";
 import { createGlow, createKeyHue, keyHueAt } from "./effects";
 import { createConductor } from "./conductor";
-import { colourSettings, familyHue, GREY, hslToRgb, palette, paletteAt } from "../colours";
+import { accentLightness, colourSettings, familyHue, GREY, hslToRgb, palette, paletteAt } from "../colours";
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
@@ -448,7 +448,8 @@ function create(): Preset {
 			const turn = COLOURS.mode === "cover" ? 1 : 0;
 			const liveHue = keyHue(shown, viewTime, c.dt) * COLOURS.harmony;
 			const lit = tint(rel(live[LEVEL]), 1);
-			const liveRgb = hslToRgb(familyHue(pal, lit, liveHue, turn), grey ? lit.s : Math.min(1, lit.s + 0.08), Math.min(0.8, lit.l + 0.16));
+			const liveS = grey ? lit.s : Math.min(1, lit.s + 0.08);
+			const liveRgb = hslToRgb(familyHue(pal, lit, liveHue, turn), liveS, accentLightness(liveS, Math.min(0.8, lit.l + 0.16)));
 
 			ctx.fillStyle = "rgb(0, 0, 0)";
 			ctx.fillRect(0, 0, width, height);

@@ -67,6 +67,9 @@ const COVER_BANDS = [
 ];
 // below this saturation a colour reads as grey: its hue is noise and is never boosted or relied on
 export const GREY = 0.12;
+// Lightness above 0.5 mixes in white: an accent made lighter keeps a saturated colour under it, so a red
+// line glows red, not pink. Saturation s and the wanted lightness l, the lightness to use.
+export const accentLightness = (s: number, l: number) => Math.min(l, 0.5 + (1 - s) * 0.3);
 const coverStop = (c: Hsl, [lo, hi]: number[]): Hsl => ({
 	h: c.h,
 	s: c.s < GREY ? c.s : Math.max(0.45, Math.min(0.95, c.s)),

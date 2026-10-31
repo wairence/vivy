@@ -8,7 +8,7 @@
 import { createNoise3D } from "simplex-noise";
 import { createGlow, createKeyHue, shimmerHue, shimmerPhase } from "./effects";
 import { createConductor } from "./conductor";
-import { colourSettings, distinctCover, familyHue, Hsl, hslToRgb, palette, paletteAt, Rgb } from "../colours";
+import { accentLightness, colourSettings, distinctCover, familyHue, Hsl, hslToRgb, palette, paletteAt, Rgb } from "../colours";
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition, publishDiagnostics } from "./types";
 import { tune, tuneVersion } from "./tune";
@@ -648,7 +648,10 @@ function create(): Preset {
 			const shimmer = shimmerPhase(fieldTime);
 			const groundOf = (g: Hsl) => hslToRgb(familyHue(pal, g, key + shimmerHue(shimmer, tintPulse * 0.4)), g.s * 0.7, g.l * 0.62);
 			const sheetOf = (sh: Hsl) => hslToRgb(familyHue(pal, sh, key + shimmerHue(shimmer, tintPulse), 0.5 * turn), sh.s, sh.l);
-			const markOf = (m: Hsl) => hslToRgb(familyHue(pal, m, key + shimmerHue(shimmer, tintPulse), turn), Math.min(1, m.s + 0.08), Math.min(0.78, m.l + 0.14));
+			const markOf = (m: Hsl) => {
+				const s = Math.min(1, m.s + 0.08);
+				return hslToRgb(familyHue(pal, m, key + shimmerHue(shimmer, tintPulse), turn), s, accentLightness(s, Math.min(0.78, m.l + 0.14)));
+			};
 			const groundRgb = groundOf(along(0));
 			const sheetRgb = sheetOf(along(byDepth ? 0 : 0.5));
 			const markRgb = markOf(along(byDepth || bySound ? 0 : 1));
