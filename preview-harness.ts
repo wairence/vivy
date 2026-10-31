@@ -196,8 +196,7 @@ function render() {
 		isPlaying: !usePaused,
 		audio,
 		colorRgb,
-		palette,
-		mouse
+		palette
 	} as any);
 
 	requestAnimationFrame(render);
