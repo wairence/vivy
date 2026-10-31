@@ -6,13 +6,14 @@ export type Picture = { brightness: number; contrast: number; saturation: number
 export const PICTURE_DEFAULTS: Picture = { brightness: 1, contrast: 1, saturation: 1, transparency: 0 };
 
 const STORAGE_KEY = "vivy:picture";
+export const PICTURE_RANGE: Record<keyof Picture, [number, number]> = { brightness: [0, 2], contrast: [0, 2], saturation: [0, 2], transparency: [0, 1] };
 
 export function storedPicture(): Picture {
 	try {
 		const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
 		const picture = { ...PICTURE_DEFAULTS };
 		for (const key of Object.keys(picture) as (keyof Picture)[])
-			if (typeof stored?.[key] === "number" && Number.isFinite(stored[key])) picture[key] = stored[key];
+			if (typeof stored?.[key] === "number" && Number.isFinite(stored[key])) picture[key] = Math.max(PICTURE_RANGE[key][0], Math.min(PICTURE_RANGE[key][1], stored[key]));
 		return picture;
 	} catch {
 		return { ...PICTURE_DEFAULTS };
