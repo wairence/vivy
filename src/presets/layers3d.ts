@@ -58,11 +58,10 @@ const MARK_INERTIA = 0.8696;
 
 // ---- the wake ---------------------------------------------------------------------------------------------
 // reach of a mark into the field, world units; how far the field turns into the mark's heading and
-// how fast that offset may change; how much the field hurries
+// how fast that offset may change
 const CUT_RADIUS = 0.7279;
 const WAKE_TURN = 0.5925;
 const WAKE_RATE = 0.9575;
-const WAKE_HURRY = 0.9225;
 
 // ---- the marks ----------------------------------------------------------------------------------------------
 const MARK_BASE_SPEED = 0.2625;
@@ -110,7 +109,6 @@ const K = tune("layers3d", {
 	CUT_RADIUS: [CUT_RADIUS, 0.05, 1.5, "how far a mark stirs the field", "wake"],
 	WAKE_TURN: [WAKE_TURN, 0, 1.5, "how hard it turns the field"],
 	WAKE_RATE: [WAKE_RATE, 0.1, 5, "how fast that turn may change"],
-	WAKE_HURRY: [WAKE_HURRY, 0, 3, "how much the field hurries"],
 	MARK_BASE_SPEED: [MARK_BASE_SPEED, 0, 1.5, "mark speed", "marks"],
 	MARK_NEAR: [MARK_NEAR, 0.2, 2, "nearest a mark is born"],
 	MARK_FAR: [MARK_FAR, 0.6, 5, "furthest a mark is born"],
@@ -150,7 +148,6 @@ const K = tune("layers3d", {
 		CUT_RADIUS: "How far around a bright mark the surrounding strokes are disturbed. Higher stirs a bigger patch of the cloud.",
 		WAKE_TURN: "How strongly a passing mark bends the strokes near it into its direction. Zero leaves them alone.",
 		WAKE_RATE: "How quickly the nearby strokes swing round after a mark. Higher makes them snap over; lower makes them follow slowly.",
-		WAKE_HURRY: "How much a passing mark speeds up the strokes near it. Zero keeps them at the same pace.",
 		MARK_BASE_SPEED: "How fast the bright marks travel. Higher makes them dash across; zero makes them hang in place.",
 		MARK_NEAR: "How close to the viewer a mark may appear. Lower lets marks come up big and close; higher keeps them away.",
 		MARK_FAR: "How far from the viewer a mark may appear. Higher lets marks appear small and far off; lower keeps them all close.",
@@ -813,7 +810,6 @@ function create(): Preset {
 				spread: number,
 				cutStir: number,
 				speed: number,
-				wakeHurry: number,
 				lightBase: number,
 				lightBrightness: number,
 				lightCut: number,
@@ -852,7 +848,7 @@ function create(): Preset {
 					p.tz += ez * step;
 
 					steer(p, Wx + p.gx + p.tx, Wy + p.gy + p.ty, Wz + p.gz + p.tz, inertia);
-					const v = speed * p.pace * (1 + wake * K.WAKE_HURRY * wakeHurry) * c.dt;
+					const v = speed * p.pace * c.dt;
 					p.x += p.hx * v;
 					p.y += p.hy * v;
 					p.z += p.hz * v;
@@ -884,7 +880,6 @@ function create(): Preset {
 				Math.max(0.08, (0.4 + slowBand * 0.7) * contraction),
 				0.45,
 				0.025 + slowBand * 0.26,
-				1,
 				0.3 + slowBand * 0.28 + c.loudness * 0.5 + release * 0.03,
 				0.14,
 				0.85,
@@ -904,7 +899,6 @@ function create(): Preset {
 				Math.max(0.04, (0.6 + slowBand * 0.8) * (1 - braceEarly * 0.35)),
 				0.27,
 				0.035 + slowBand * 0.55,
-				1.3,
 				0.22 + c.loudness * 0.45 + slowBand * 0.26 + harm * 0.21 + release * 0.06,
 				0.17,
 				0.9,
