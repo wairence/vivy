@@ -66,14 +66,12 @@ const WAKE_HURRY = 0.9225;
 
 // ---- the marks ----------------------------------------------------------------------------------------------
 const MARK_BASE_SPEED = 0.2625;
-const FLING = 0.7949;
-const FLING_RANK = 1.403;
 const MARK_NEAR = 0.6;
 const MARK_FAR = 2.7;
 // marks nearer than this (fraction of the near-far axis) fly in from off screen; the margin is in
 // half-heights of the screen
 const FLY_IN_NEARER = 0.4775;
-const FLY_IN_MARGIN = 0.04;
+const FLY_IN_MARGIN = -0.05;
 
 // ---- light ----------------------------------------------------------------------------------------------------
 const GROUND_ALPHA_CAP = 0.75;
@@ -114,12 +112,10 @@ const K = tune("layers3d", {
 	WAKE_RATE: [WAKE_RATE, 0.1, 5, "how fast that turn may change"],
 	WAKE_HURRY: [WAKE_HURRY, 0, 3, "how much the field hurries"],
 	MARK_BASE_SPEED: [MARK_BASE_SPEED, 0, 1.5, "mark speed", "marks"],
-	FLING: [FLING, 0.05, 3, "how hard a hit throws a mark"],
-	FLING_RANK: [FLING_RANK, 0, 3, "throw of a mark in a run"],
 	MARK_NEAR: [MARK_NEAR, 0.2, 2, "nearest a mark is born"],
 	MARK_FAR: [MARK_FAR, 0.6, 5, "furthest a mark is born"],
 	FLY_IN_NEARER: [FLY_IN_NEARER, 0, 1, "nearer than this flies in from off screen"],
-	FLY_IN_MARGIN: [FLY_IN_MARGIN, 0, 0.5, "how far off screen it starts"],
+	FLY_IN_MARGIN: [FLY_IN_MARGIN, -0.5, 0.5, "how far past the edge it starts"],
 	GROUND_ALPHA_CAP: [GROUND_ALPHA_CAP, 0, 1, "ground brightest", "light"],
 	SHEET_ALPHA_CAP: [SHEET_ALPHA_CAP, 0, 1, "sheet brightest"],
 	MARK_ALPHA_CAP: [MARK_ALPHA_CAP, 0, 1, "mark brightest"],
@@ -156,12 +152,10 @@ const K = tune("layers3d", {
 		WAKE_RATE: "How quickly the nearby strokes swing round after a mark. Higher makes them snap over; lower makes them follow slowly.",
 		WAKE_HURRY: "How much a passing mark speeds up the strokes near it. Zero keeps them at the same pace.",
 		MARK_BASE_SPEED: "How fast the bright marks travel. Higher makes them dash across; zero makes them hang in place.",
-		FLING: "How hard a hit throws its mark. Higher sends marks of loud, sharp sounds flying much faster.",
-		FLING_RANK: "How hard each mark in a rapid run of sounds is thrown. Higher makes runs of notes shoot out faster.",
 		MARK_NEAR: "How close to the viewer a mark may appear. Lower lets marks come up big and close; higher keeps them away.",
 		MARK_FAR: "How far from the viewer a mark may appear. Higher lets marks appear small and far off; lower keeps them all close.",
 		FLY_IN_NEARER: "Marks closer than this fly in from off screen instead of appearing in place. Zero makes all fly in, one makes all appear in place.",
-		FLY_IN_MARGIN: "How far past the screen edge a flying-in mark begins. Higher makes it travel further before coming into view.",
+		FLY_IN_MARGIN: "How close to the screen edge a flying-in mark may begin; each starts somewhere between its place and this. Above zero some start off screen, and a short sound may be over before they come into view.",
 		GROUND_ALPHA_CAP: "Brightest the wide, dim ribbons can get. Higher makes the background haze stronger; zero hides it.",
 		SHEET_ALPHA_CAP: "Brightest the thin hairlines can get. Higher makes them stand out; zero hides them.",
 		MARK_ALPHA_CAP: "Brightest the marks can get. Lower dims even the loudest hits; zero hides the marks.",
@@ -200,14 +194,11 @@ type Particle = {
 };
 
 type Mark = Particle & {
-	chase: number;
 	breadth: number;
 	soft: number;
-	boost: number;
 	age: number;
 	rise: number;
 	decay: number;
-	fling: number;
 	charge: number;
 	power: number;
 	streak: number;
@@ -452,14 +443,11 @@ function create(): Preset {
 	};
 	const spawnMark = (): Mark => ({
 		...spawn(),
-		chase: 8,
 		breadth: 0.5,
 		soft: 0,
-		boost: 0,
 		age: 99,
 		rise: 0.06,
 		decay: 0.22,
-		fling: 0,
 		charge: 0,
 		power: 0.5,
 		streak: 0,
@@ -565,7 +553,6 @@ function create(): Preset {
 			const releaseRaw = c.timeToImpact !== null && c.timeToImpact > 0 ? 0 : c.impact;
 			release += (releaseRaw - release) * Math.min(1, (releaseRaw > release ? 11 : 3) * c.dt);
 			const runDip = Math.max(0.12, c.runInDip);
-			const windUp = 1 + c.windup * (0.12 + c.runInBuild * 0.9);
 			const cutGate = 1 - braceEarly * 0.5;
 			const dim = (1 - braceEarly * 0.42 * runDip) * (1 + release * 0.15);
 			const contraction = 1 - braceEarly * 0.55;
@@ -896,7 +883,7 @@ function create(): Preset {
 				0.35,
 				Math.max(0.08, (0.4 + slowBand * 0.7) * contraction),
 				0.45,
-				(0.025 + c.loudness * 0.26) * windUp,
+				0.025 + slowBand * 0.26,
 				1,
 				0.3 + slowBand * 0.28 + c.loudness * 0.5 + release * 0.03,
 				0.14,
@@ -916,7 +903,7 @@ function create(): Preset {
 				1,
 				Math.max(0.04, (0.6 + slowBand * 0.8) * (1 - braceEarly * 0.35)),
 				0.27,
-				(0.035 + c.loudness * 0.55) * windUp,
+				0.035 + slowBand * 0.55,
 				1.3,
 				0.22 + c.loudness * 0.45 + slowBand * 0.26 + harm * 0.21 + release * 0.06,
 				0.17,
@@ -930,7 +917,6 @@ function create(): Preset {
 
 			// ---- the next sound, and the marks it lights ---------------------------------------------------------
 			const sound = nextSound(audio, progressSec, beat, c.energy);
-			const hitFling = K.FLING * (0.35 + sound.sharp * sound.sharp * 0.65) * (0.5 + sound.breadth * 0.8);
 			// the wind as seen from the camera: the axis a sound's register is read along
 			let ax = Wx * Rx + Wz * Rz;
 			let ay = Wx * Yx + Wy * Yy + Wz * Yz;
@@ -962,32 +948,25 @@ function create(): Preset {
 				m.age = -lit * 0.014;
 				m.rise = sound.rise * (0.85 + Math.random() * 0.35);
 				m.decay = sound.decay * (0.8 + Math.random() * 0.5) * (m.streak > 0 ? 1.6 : 1);
-				m.fling = hitFling * (m.streak > 0 ? K.FLING_RANK / K.FLING : 1);
-				m.chase = 0.9 / Math.max(0.08, m.rise);
 				m.power = Math.min(1, sound.amp) * (0.7 + Math.random() * 0.45);
 				m.breadth = sound.breadth * (0.8 + Math.random() * 0.4);
 				m.soft = 1 - sound.sharp;
 				m.tone = sound.ringing;
-				// a crack travels, a swell drifts; a few run, and the faster of a sound's marks are the nearer
-				const runner = Math.random() < 0.1;
+				// each its own pace, so they never fly in step; the nearer are the faster
 				const r = Math.random();
-				m.pace = (0.95 + sound.sharp * sound.sharp * 1.55) * (0.8 + r * 0.45) * (runner ? 1.5 : 0.88);
-				if (runner) {
-					m.fling *= 1.8;
-					m.chase = 3.6;
-				}
-				m.boost = 0;
+				m.pace = 0.95 + r * 0.5;
 				// its place: across the wind by how ringing the sound was, anywhere along it
-				const at = runner ? 0.5 : sound.ringing;
-				const spread = runner ? 0.3 : 0.2 + Math.min(0.45, wanted * 0.008);
+				const at = sound.ringing;
+				const spread = 0.2 + Math.min(0.45, wanted * 0.008);
 				const across = (Math.max(0, Math.min(1, at + (Math.random() - 0.5) * spread)) - 0.5) * 2 * 0.8;
 				const along = (Math.random() - 0.5) * 2;
 				let px = Math.max(-0.95 * aspect, Math.min(0.95 * aspect, -ay * across + ax * along * aspect));
 				let py = Math.max(-0.9, Math.min(0.9, ax * across + ay * along * aspect));
-				const near = runner ? 1 : 0.15 + r * 0.7;
+				const near = 0.15 + r * 0.7;
 				if (near > K.FLY_IN_NEARER && al > 0.15) {
-					// back along the wind to just past the edge it would have come in over
-					const t = Math.min(toEdge(px, ax, aspect), toEdge(py, ay, 1)) + K.FLY_IN_MARGIN;
+					// back along the wind, some way towards the edge it comes in over: each from its own start, and on screen,
+					// since a short sound is over before a mark started outside the edge reaches it
+					const t = (Math.min(toEdge(px, ax, aspect), toEdge(py, ay, 1)) + K.FLY_IN_MARGIN) * Math.random();
 					px -= ax * t;
 					py -= ay * t;
 				}
@@ -1009,7 +988,8 @@ function create(): Preset {
 
 			const sectionPower = 0.78 + slowBand * 0.45;
 			const markSpread = K.MARK_SPREAD_MAX * contraction;
-			const markSpeed = K.MARK_BASE_SPEED * (0.3 + c.loudness * 1.2) * windUp;
+			// speed follows the part of the song, over seconds; a sound shows in light and width, never as a jolt
+			const markSpeed = K.MARK_BASE_SPEED * (0.3 + slowBand * 1.2);
 			const markWidthBand = 0.7 + slowBand * 0.6;
 			let flareNow = 0;
 			let headCount = 0;
@@ -1025,8 +1005,6 @@ function create(): Preset {
 				if (m.age <= 0) m.charge = 0;
 				else if (m.age < m.rise) m.charge = smoothstep(m.age / m.rise);
 				else m.charge = Math.exp(-(m.age - m.rise) / m.decay);
-				const boostTarget = Math.min(1, m.charge) * m.fling;
-				m.boost += (boostTarget - m.boost) * Math.min(1, (boostTarget > m.boost ? m.chase : m.chase * 0.4) * c.dt);
 
 				// slow broad flow: one arc over a mark's second on screen
 				if ((tick + i) % FLOW_EVERY === 0 || (m.gx === 0 && m.gy === 0 && m.gz === 0)) {
@@ -1036,7 +1014,7 @@ function create(): Preset {
 					m.gz = flowZ;
 				}
 				steer(m, Wx + m.gx, Wy + m.gy, Wz + m.gz, K.MARK_INERTIA);
-				const v = markSpeed * m.pace * (1 + m.boost) * c.dt;
+				const v = markSpeed * m.pace * c.dt;
 				m.x += m.hx * v;
 				m.y += m.hy * v;
 				m.z += m.hz * v;
