@@ -509,9 +509,20 @@ function create(): Preset {
 	let orbit = 0;
 	let swayClock = 0;
 	let tick = 0;
+	let warmed = false;
+	let warming = false;
 
-	return {
+	const preset: Preset = {
 		draw(frame) {
+			// a first frame that arrives paused has dt 0 and no trails yet, so it would be black: run ~2 s up to it unseen
+			if (!warmed) {
+				warmed = true;
+				if (!frame.isPlaying) {
+					warming = true;
+					for (let k = 120; k > 0; k--) preset.draw({ ...frame, isPlaying: true, progressSec: frame.progressSec - k / 60 });
+					warming = false;
+				}
+			}
 			const { ctx, width, height, isPlaying, colorRgb, audio, progressSec } = frame;
 			// paused: redraw only when the moment, size, a knob or a colour changes
 			if (!isPlaying) {
@@ -1068,6 +1079,7 @@ function create(): Preset {
 			flare = flareNow;
 
 			publishDiagnostics("layers3d", { checksum, cameraX: Px, cameraZ: Pz, heads: headCount });
+			if (warming) return;
 
 			if (renderer?.lost()) {
 				renderer = null;
@@ -1104,6 +1116,7 @@ function create(): Preset {
 			glow.dispose();
 		}
 	};
+	return preset;
 }
 
 // scratch for one ribbon's projected points, at module scope so a frame allocates nothing
