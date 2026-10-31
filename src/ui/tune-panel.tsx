@@ -22,6 +22,7 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 	// drawn beside the panel, where its scrolling cannot cut it off
 	const [hint, setHint] = useState<{ text: string; foot: string; top: number; right: number } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
+	const hintRef = useRef<HTMLDivElement>(null);
 	// our own hairline scrollbar: Spotify's client-wide scrollbar style wins over the panel's
 	const [bar, setBar] = useState<{ top: number; height: number; right: number } | null>(null);
 	const measureBar = () => {
@@ -36,6 +37,14 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 		setBar(b => (b && Math.abs(b.top - top) < 0.5 && Math.abs(b.height - height) < 0.5 && b.right === right ? b : { top, height, right }));
 	};
 	useLayoutEffect(measureBar);
+	// a hint beside one of the lowest rows would run past the window's edge
+	useLayoutEffect(() => {
+		const el = hintRef.current;
+		const parent = el?.offsetParent;
+		if (!hint || !el || !parent) return;
+		const top = Math.max(8, Math.min(hint.top, parent.clientHeight - el.offsetHeight - 12));
+		if (top < hint.top) setHint({ ...hint, top });
+	}, [hint]);
 	useEffect(() => {
 		window.addEventListener("resize", measureBar);
 		return () => window.removeEventListener("resize", measureBar);
@@ -203,7 +212,7 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 			</div>
 			{bar ? <div className="vivy-tune-bar" style={{ top: bar.top, height: bar.height, right: bar.right }} /> : null}
 			{hint ? (
-				<div className="vivy-tune-hint" style={{ top: hint.top, right: hint.right }}>
+				<div className="vivy-tune-hint" ref={hintRef} style={{ top: hint.top, right: hint.right }}>
 					<div>{hint.text}</div>
 					{hint.foot ? <small>{hint.foot}</small> : null}
 				</div>
