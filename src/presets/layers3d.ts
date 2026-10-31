@@ -85,6 +85,8 @@ const SHEET_WIDTH = 0.003571;
 const MARK_WIDTH = 0.004;
 // widest any ribbon is drawn, as a fraction of the screen's height
 const MAX_HALF_WIDTH = 0.004117;
+// below this canvas height ribbons thin slower than the window, or most fall under the 0.6 px fade
+const THIN_BELOW = 720;
 // live knobs (T in the client): every one starts at the constant above and is read each frame
 const K = tune("layers3d", {
 	ORBIT_RADIUS: [ORBIT_RADIUS, 0.3, 2.5, "orbit distance", "camera"],
@@ -509,9 +511,20 @@ function create(): Preset {
 	let orbit = 0;
 	let swayClock = 0;
 	let tick = 0;
+	let warmed = false;
+	let warming = false;
 
-	return {
+	const preset: Preset = {
 		draw(frame) {
+			// a first frame that arrives paused has dt 0 and no trails yet, so it would be black: run ~2 s up to it unseen
+			if (!warmed) {
+				warmed = true;
+				if (!frame.isPlaying) {
+					warming = true;
+					for (let k = 120; k > 0; k--) preset.draw({ ...frame, isPlaying: true, progressSec: frame.progressSec - k / 60 });
+					warming = false;
+				}
+			}
 			const { ctx, width, height, isPlaying, colorRgb, audio, progressSec } = frame;
 			// paused: redraw only when the moment, size, a knob or a colour changes
 			if (!isPlaying) {
@@ -689,6 +702,7 @@ function create(): Preset {
 			// the path is resampled at fixed ages: point j is where the particle was j steps ago
 			// the first two points are a rounded nose, a half and a whole width ahead of the particle
 			const maxHalf = height * K.MAX_HALF_WIDTH;
+			const thinning = Math.sqrt(Math.max(1, THIN_BELOW / height));
 			const ribbon = (verts: Float32Array, t: Trail, i: number, alpha: number, halfWidth: number, tone = -1) => {
 				const back = 1 - t.clock / t.step;
 				let o = i * TRAIL * 10;
@@ -713,7 +727,7 @@ function create(): Preset {
 					sys[k] = height / 2 - ((ax * Yx + ay * Yy + az * Yz) / d) * focal;
 					const age = j / (TAIL - 1);
 					const seen = seenAt(depth);
-					const w = Math.min(maxHalf, (halfWidth * focal) / d) * (1 - age * 0.7);
+					const w = Math.min(maxHalf, (halfWidth * focal) / d) * thinning * (1 - age * 0.7);
 					hws[k] = Math.max(0.6, w);
 					als[k] = alpha * seen * (1 - age) * Math.min(1, w / 0.6);
 					tns[k] = tone >= 0 ? tone : nearTone(depth);
@@ -1068,6 +1082,7 @@ function create(): Preset {
 			flare = flareNow;
 
 			publishDiagnostics("layers3d", { checksum, cameraX: Px, cameraZ: Pz, heads: headCount });
+			if (warming) return;
 
 			if (renderer?.lost()) {
 				renderer = null;
@@ -1078,7 +1093,18 @@ function create(): Preset {
 				renderer = makeRenderer();
 				if (renderer) rendererLost = false;
 			}
-			if (!renderer) return;
+			if (!renderer) {
+				// a lost context is retried above; keep its last frame rather than claim WebGL is off
+				if (rendererLost) return;
+				ctx.fillStyle = "rgb(0, 0, 0)";
+				ctx.fillRect(0, 0, width, height);
+				ctx.font = `${Math.round(14 * (globalThis.devicePixelRatio || 1))}px sans-serif`;
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+				ctx.fillText("Drift needs WebGL. Turn on hardware acceleration in Spotify's settings.", width / 2, height / 2);
+				return;
+			}
 			renderer.draw(
 				width,
 				height,
@@ -1104,6 +1130,7 @@ function create(): Preset {
 			glow.dispose();
 		}
 	};
+	return preset;
 }
 
 // scratch for one ribbon's projected points, at module scope so a frame allocates nothing
