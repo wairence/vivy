@@ -227,6 +227,8 @@ function create(): Preset {
 	let ahead = 0.3;
 	// where on the palette the music has the picture, when the colour follows the sound
 	let soundAt = 0.5;
+	// the horizon's lean towards the coming section's key, eased so a new key is joined, not jumped to
+	let skyLean = NaN;
 	let camera = 1;
 	// the dust: across (half-widths), above the ground (ridges), its place in the passing stretch (0..1), its own light
 	const dust = new Float32Array(DUST * 4);
@@ -461,7 +463,9 @@ function create(): Preset {
 				const strength = smoothstep((ahead - 0.1) / 0.45) * presence;
 				if (strength > 0.01) {
 					const far = tint(rel(ahead), 0);
-					const hue = far.h + (FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * COLOURS.harmony : liveHue);
+					const lean = FEATURES.grid.on ? keyHueAt(shown, viewTime + K.FUTURE_BEATS * beat * 0.8) * COLOURS.harmony : liveHue;
+					skyLean = Number.isNaN(skyLean) || !isPlaying ? lean : skyLean + (lean - skyLean) * Math.min(1, c.dt / 0.6);
+					const hue = far.h + skyLean;
 					const sky = hslToRgb(hue + turn * 0.3, far.s * 0.85, Math.min(0.7, far.l + 0.05));
 					// a low wide band, not a disc: SKY_HEIGHT above the far edge, a third of that below, brightest along the edge
 					const across = width * K.SKY_WIDTH;
