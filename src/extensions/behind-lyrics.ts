@@ -17,7 +17,7 @@ const SPICY = {
 	canvasVideo: ".CanvasStage, .CanvasAmbient",
 	// set while a track's Canvas video plays in their fullscreen, where it hides the cover
 	videoPage: "#SpicyLyricsPage.CanvasImmersive",
-	cover: ".MediaContent",
+	cover: ".MediaImageContainer",
 	controls: "#SpicyLyricsPage .ViewControls",
 	controlClass: "ViewControl",
 	settingsButton: "#SettingsToggle"
@@ -30,7 +30,7 @@ const SEE_THROUGH = "vivy-lyrics-see-through";
 // With the picture's transparency the page's wrappers go clear and stop isolating, as on vivy's own page.
 const STYLE = `
 .${HOST_CLASS} > :is(${SPICY.background}, ${SPICY.canvasVideo}) { visibility: hidden; }
-${SPICY.videoPage}:has(.${HOST_CLASS}) ${SPICY.cover} { opacity: 1 !important; }
+${SPICY.videoPage}:has(.${HOST_CLASS}) ${SPICY.cover} { opacity: 1 !important; scale: none !important; }
 :is(.${CANVAS_CLASS}, .${SHADE_CLASS}) { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .${SEE_THROUGH} { background: transparent !important; isolation: auto !important; z-index: auto !important; will-change: auto !important; }`;
 
