@@ -73,8 +73,7 @@ const MARK_FAR = 2.7;
 // marks nearer than this (fraction of the near-far axis) fly in from off screen; the margin is in
 // half-heights of the screen
 const FLY_IN_NEARER = 0.4775;
-// negative: inside the edge. A short sound lights and fades before a mark started outside reaches the screen
-const FLY_IN_MARGIN = -0.15;
+const FLY_IN_MARGIN = -0.05;
 
 // ---- light ----------------------------------------------------------------------------------------------------
 const GROUND_ALPHA_CAP = 0.75;
@@ -162,7 +161,7 @@ const K = tune("layers3d", {
 		MARK_NEAR: "How close to the viewer a mark may appear. Lower lets marks come up big and close; higher keeps them away.",
 		MARK_FAR: "How far from the viewer a mark may appear. Higher lets marks appear small and far off; lower keeps them all close.",
 		FLY_IN_NEARER: "Marks closer than this fly in from off screen instead of appearing in place. Zero makes all fly in, one makes all appear in place.",
-		FLY_IN_MARGIN: "Where a flying-in mark begins, from the screen edge. Below zero it starts inside the picture and lights up where it can be seen; above zero it starts off screen and a short sound may be over before it comes into view.",
+		FLY_IN_MARGIN: "How close to the screen edge a flying-in mark may begin; each starts somewhere between its place and this. Above zero some start off screen, and a short sound may be over before they come into view.",
 		GROUND_ALPHA_CAP: "Brightest the wide, dim ribbons can get. Higher makes the background haze stronger; zero hides it.",
 		SHEET_ALPHA_CAP: "Brightest the thin hairlines can get. Higher makes them stand out; zero hides them.",
 		MARK_ALPHA_CAP: "Brightest the marks can get. Lower dims even the loudest hits; zero hides the marks.",
@@ -987,8 +986,9 @@ function create(): Preset {
 				let py = Math.max(-0.9, Math.min(0.9, ax * across + ay * along * aspect));
 				const near = runner ? 1 : 0.15 + r * 0.7;
 				if (near > K.FLY_IN_NEARER && al > 0.15) {
-					// back along the wind to just past the edge it would have come in over
-					const t = Math.min(toEdge(px, ax, aspect), toEdge(py, ay, 1)) + K.FLY_IN_MARGIN;
+					// back along the wind, some way towards the edge it comes in over: each from its own start, and on screen,
+					// since a short sound is over before a mark started outside the edge reaches it
+					const t = (Math.min(toEdge(px, ax, aspect), toEdge(py, ay, 1)) + K.FLY_IN_MARGIN) * Math.random();
 					px -= ax * t;
 					py -= ay * t;
 				}
