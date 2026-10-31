@@ -123,9 +123,9 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 
 const PICTURE_KNOBS: [keyof Picture, string, number, number, string][] = [
 	["brightness", "brightness", 0, 2, "Darker or lighter, the whole picture."],
-	["contrast", "contrast", 0, 2, "Flatter or harder, the whole picture."],
+	["contrast", "contrast", 0, 2, "Lifts or deepens the midtones; black stays black and white stays white."],
 	["saturation", "saturation", 0, 2, "From grey to stronger colour."],
-	["transparency", "transparency", 0, 1, "Lets the Spotify theme behind the page show through."]
+	["transparency", "transparency", 0, 1, "Lets the Spotify theme behind the page show through. Only shows something with themes that have a background image."]
 ];
 
 const MODES: [ColourMode, string, string][] = [
@@ -234,7 +234,7 @@ export function ColourSection({ presetId, panel, explain, unexplain }: {
 				</div>
 				<input type="range" min={0} max={1} step={0.01} value={colours.harmony} onChange={e => set({ harmony: Number(e.target.value) })} />
 			</div>
-			<div className="vivy-tune-sub">picture</div>
+			<div className="vivy-tune-group">picture</div>
 			{PICTURE_KNOBS.map(([key, name, min, max, what]) => (
 				<div
 					key={key}

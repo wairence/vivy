@@ -3,6 +3,8 @@
 // It has no frame in this client, so it is moved by a drag region and sized with resizeTo, the way
 // Spotify's own miniplayer is.
 
+import { refreshPicture } from "./picture";
+
 export const IDLE_HIDE_MS = 2500;
 const PLACE_KEY = "vivy:pip-place";
 const SMALLEST = 200;
@@ -50,6 +52,7 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 		pip = null;
 		Object.assign(canvas.style, { display: "", width: "", height: "" });
 		container?.prepend(canvas);
+		refreshPicture();
 		hooks.onMove(false);
 	};
 
@@ -79,6 +82,7 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 				// set one by one: the picture's filter and opacity are inline styles too
 				Object.assign(canvas.style, { display: "block", width: "100vw", height: "100vh" });
 				doc.body.append(canvas);
+				refreshPicture();
 				if (place && Number.isFinite(place.x) && Number.isFinite(place.y)) {
 					try {
 						opened.moveTo(place.x, place.y);
