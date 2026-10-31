@@ -88,7 +88,8 @@ function start(initial: BehindLyrics) {
 	style.textContent = STYLE;
 	document.head.append(style);
 	const track = watchTrackData(undefined, true);
-	const audioSync = new AudioSync();
+	// its inaudible tone keeps an audio stream open, so only while something is drawn
+	let audioSync: AudioSync | null = null;
 	const pace = createFramePacer();
 	const slots = new Map<Element, Slot>();
 	let shown: Rgb[] = track.cover().slice();
@@ -103,6 +104,10 @@ function start(initial: BehindLyrics) {
 		host.classList.remove(HOST_CLASS);
 		slots.delete(host);
 		seeThroughFrom(null);
+		if (!slots.size) {
+			audioSync?.dispose();
+			audioSync = null;
+		}
 	};
 	const mount = (host: Element) => {
 		const canvas = document.createElement("canvas");
@@ -122,6 +127,7 @@ function start(initial: BehindLyrics) {
 		const slot = { canvas, shade, inWindow: true, copied: "" };
 		paintSlot(host, slot);
 		slots.set(host, { ...slot, ctx, preset: definition().create(), clock: createSmoothClock() });
+		audioSync ??= new AudioSync();
 	};
 
 	const render = () => {
@@ -150,7 +156,7 @@ function start(initial: BehindLyrics) {
 					ctx: slot.ctx,
 					width: w,
 					height: h,
-					progressSec: slot.clock(playerSec, isPlaying, wall / 1000) - audioSync.getLatencySec(),
+					progressSec: slot.clock(playerSec, isPlaying, wall / 1000) - (audioSync?.getLatencySec() ?? 0),
 					isPlaying,
 					audio: track.audio(),
 					colorRgb: shown[1],
@@ -196,7 +202,6 @@ function start(initial: BehindLyrics) {
 			cancelAnimationFrame(requestId);
 			for (const [host, slot] of slots) unmount(host, slot);
 			track.dispose();
-			audioSync.dispose();
 			style.remove();
 		}
 	};
