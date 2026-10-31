@@ -7,7 +7,7 @@ export const PICTURE_DEFAULTS: Picture = { brightness: 1, contrast: 1, saturatio
 
 const STORAGE_KEY = "vivy:picture";
 
-function load(): Picture {
+export function storedPicture(): Picture {
 	try {
 		const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
 		const picture = { ...PICTURE_DEFAULTS };
@@ -19,8 +19,8 @@ function load(): Picture {
 	}
 }
 
-let picture = load();
-let target: { canvas: HTMLCanvasElement; container: HTMLElement } | null = null;
+let picture = storedPicture();
+let target: { canvas: HTMLCanvasElement; container: HTMLElement; backdrop: HTMLElement } | null = null;
 
 export const currentPicture = () => picture;
 
@@ -64,14 +64,78 @@ export function refreshPicture() {
 	}
 	if (saturation !== 1) parts.push(`saturate(${saturation})`);
 	target.canvas.style.filter = parts.join(" ");
-	target.canvas.style.opacity = transparency ? String(1 - transparency) : "";
-	// the container's black would show through instead of the Spotify theme behind the page
+	// screen adds the preset's light to what is behind and drops its black; only the black under it
+	// thins out, so the lines stay at full strength over the theme
+	target.canvas.style.mixBlendMode = transparency ? "screen" : "";
 	target.container.style.background = transparency ? "transparent" : "";
+	seeThroughPage(paintBackdrop(target.backdrop, transparency));
 }
 
-export function showPictureOn(canvas: HTMLCanvasElement, container: HTMLElement) {
-	target = { canvas, container };
+// Stock Spotify has nothing behind the page, so there the backdrop is the cover, blurred; a theme
+// keeps its own picture under the window. The marketplace slot with no theme installed is stock too.
+export function isStockTheme(): boolean {
+	const theme = Spicetify.Config?.current_theme ?? "";
+	if (theme === "" || theme === "SpicetifyDefault") return true;
+	if (theme !== "marketplace") return false;
+	try {
+		return JSON.parse(localStorage.getItem("marketplace:installed-themes") ?? "[]").length === 0;
+	} catch {
+		return false;
+	}
+}
+
+function coverUrl(): string | null {
+	const meta = Spicetify.Player.data?.item?.metadata;
+	// the small size: blurred over the whole page it looks the same and loads at once
+	const url = meta?.image_url || meta?.image_large_url;
+	if (!url) return null;
+	return url.startsWith("spotify:image:") ? "https://i.scdn.co/image/" + url.slice(14) : url;
+}
+
+// The cover the way the Hazy theme lays it under Spotify: soft, washed out, over black.
+const COVER_LOOK = "blur(15px) contrast(0.5) saturate(0.7) brightness(1.2)";
+const COVER_OPACITY = 0.55;
+
+// What shows under a transparent preset. On the stock theme: the cover over black, as strong as
+// `transparency`. With a theme: black thinned to `transparency`, and true is returned, because then
+// the theme's own picture has to show through.
+export function paintBackdrop(el: HTMLElement, transparency: number): boolean {
+	const cover = transparency && isStockTheme() ? coverUrl() : null;
+	el.style.background = transparency && !cover ? `rgba(0, 0, 0, ${1 - transparency})` : "#000";
+	let image = el.firstElementChild as HTMLElement | null;
+	if (!cover) {
+		image?.remove();
+		return transparency > 0;
+	}
+	if (!image) {
+		image = document.createElement("div");
+		image.style.cssText = `position:absolute;inset:0;background-size:cover;background-position:center;filter:${COVER_LOOK}`;
+		el.append(image);
+	}
+	image.style.backgroundImage = `url("${cover}")`;
+	image.style.opacity = String(COVER_OPACITY * transparency);
+	return false;
+}
+
+// Themes with a picture keep it under the whole window and paint the main view solid over it, and
+// Spotify isolates the page, which keeps a blend from reaching the picture. While this page is open,
+// its wrappers up to the window's top container go clear and stop isolating (see .vivy-see-through).
+const SEE_THROUGH = "vivy-see-through";
+function seeThroughPage(on: boolean) {
+	document.querySelectorAll(`.${SEE_THROUGH}`).forEach(el => el.classList.remove(SEE_THROUGH));
+	if (!on || !target) return;
+	for (let el = target.container.parentElement; el && !el.matches(".Root__top-container, body"); el = el.parentElement) el.classList.add(SEE_THROUGH);
+}
+
+export function showPictureOn(canvas: HTMLCanvasElement, container: HTMLElement, backdrop: HTMLElement) {
+	target = { canvas, container, backdrop };
 	refreshPicture();
+	Spicetify.Player.addEventListener("songchange", refreshPicture);
+	return () => {
+		Spicetify.Player.removeEventListener("songchange", refreshPicture);
+		seeThroughPage(false);
+		target = null;
+	};
 }
 
 export function setPicture(patch: Partial<Picture>) {

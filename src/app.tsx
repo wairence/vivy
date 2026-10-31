@@ -23,6 +23,7 @@ function loadStoredPresetId(): string {
 export default function App() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const backdropRef = useRef<HTMLDivElement>(null);
 	const [presetId, setPresetId] = useState(loadStoredPresetId);
 	const [uiVisible, setUiVisible] = useState(true);
 	const [isFullscreen, setIsFullscreen] = useState(false);
@@ -61,7 +62,7 @@ export default function App() {
 
 	useEffect(announceBuild, []);
 	useEffect(() => {
-		if (canvasRef.current && containerRef.current) showPictureOn(canvasRef.current, containerRef.current);
+		if (canvasRef.current && containerRef.current && backdropRef.current) return showPictureOn(canvasRef.current, containerRef.current, backdropRef.current);
 	}, []);
 	useEffect(
 		() => () => {
@@ -117,6 +118,7 @@ export default function App() {
 
 	return (
 		<div className={`vivy-container${uiVisible ? "" : " vivy-idle"}`} ref={containerRef}>
+			<div ref={backdropRef} className="vivy-backdrop" />
 			<canvas ref={canvasRef} className="vivy-canvas" />
 
 			{tuneOpen ? <TunePanel presetId={presetId} onClose={() => setTuneOpen(false)} /> : null}

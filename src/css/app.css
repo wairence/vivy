@@ -265,17 +265,32 @@
 .vivy-tune-head {
 	position: sticky;
 	top: -10px;
-	display: flex;
-	gap: 6px;
-	align-items: center;
-	padding: 10px 0 8px;
+	z-index: 1;
+	padding: 10px 0 2px;
 	margin-top: -10px;
 	background: rgba(0, 0, 0, 0.6);
 }
 
-.vivy-tune-head b {
+.vivy-tune-title {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	margin-bottom: 8px;
+}
+
+.vivy-tune-title b {
 	flex: 1;
 	font-size: 13px;
+}
+
+.vivy-tabs {
+	margin-bottom: 6px;
+}
+
+.vivy-tune-note {
+	margin: 10px 0 12px;
+	line-height: 1.45;
+	color: rgba(255, 255, 255, 0.55);
 }
 
 .vivy-tune-group {
@@ -616,4 +631,19 @@
 
 .vivy-more.on svg {
 	transform: rotate(180deg);
+}
+
+/* set by the picture's transparency on the page's ancestors, while the page is open */
+.vivy-see-through {
+	background: transparent !important;
+	isolation: auto !important;
+	z-index: auto !important;
+	will-change: auto !important;
+}
+
+/* under the canvas: black, or with transparency the thinned black (over the blurred cover on the stock theme) */
+.vivy-backdrop {
+	position: absolute;
+	inset: 0;
+	background: #000;
 }
