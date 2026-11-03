@@ -2,7 +2,12 @@
 // (knobs and hints in tune(), gradients in colourSettings(), Ridgeline's switches), whose ids are
 // `<preset>.<KNOB>`, `<preset>.<KNOB>.hint`, `group.<group>`, `<preset>.<key 1-9>`, `<preset>.follows.<id>` and `.hint`.
 // A language is a table of the same ids; a missing entry falls back to English.
+import de from "./locales/de";
+import es from "./locales/es";
+import ja from "./locales/ja";
+import pt from "./locales/pt";
 import ru from "./locales/ru";
+import turkish from "./locales/tr";
 
 export const EN = {
 	presets: "Presets",
@@ -98,8 +103,8 @@ export const EN = {
 export type TextId = keyof typeof EN;
 type Vars = Record<string, string | number>;
 
-// keyed by the language part of the locale
-export const LANGUAGES: Record<string, Record<string, string>> = { ru };
+// keyed by the language part of the locale: "pt" is written in Brazilian Portuguese
+export const LANGUAGES: Record<string, Record<string, string>> = { ru, es, pt, de, ja, tr: turkish };
 
 // Spotify's own language, then the system's; read on every call, since Spicetify.Locale may come up after this module
 export function language(): string {

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- vivy follows Spotify's language: Russian, English otherwise (#7). Preset names stay as they are.
+- vivy follows Spotify's language: Russian, Spanish, Brazilian Portuguese, German, Japanese and Turkish, English otherwise (#7). Preset names stay as they are.
 
 ## 0.3.0 — 2026-10-31
 
