@@ -42,6 +42,7 @@ The extension for Spicy Lyrics calls `track-data.ts` and the presets directly, w
 | `src/presets/effects.ts` | the key's hue lean, glow, the flare's hue lean (`shimmerHue`) |
 | `src/presets/next-sound.ts` | the next sound's properties, for Drift |
 | `src/presets/tune.ts` | live knobs |
+| `src/i18n.ts`, `src/locales/*.ts` | the UI's text: English, `t()`, and one table per language |
 | `src/presets/ridge.ts`, `layers3d.ts` | the two presets |
 
 ## Loading the analysis
@@ -157,6 +158,14 @@ const K = tune("ridge", { HORIZON: [0.3429, 0.05, 0.6, "horizon height", "view"]
 Each spec is `[default, min, max, label, group?]` (the group carries over to the following knobs). `tune()` returns an object whose properties are the live values. The panel writes into it and the preset reads `K.HORIZON` each frame. Persistence: values moved off their default are stored in `localStorage` under `vivy:tune:<preset>` as `[value, defaultAtTheTimeOfMoving]`. On load a stored value is used only if the code's default is still the one it was moved from, so changing a default in code wins and an old move does not come back when a default happens to return to its old value. A stored value for a knob the code no longer declares is dropped on load. `setKnob` clamps to the range. Every change bumps `tuneVersion()`, which a preset that caches work shaped by a knob (Ridgeline's rows and hills) compares to know when to redo it. `tuneFeatures()` shows a preset's number-key switches in the panel. `check-presets.js` runs each preset with every knob at its minimum and at its maximum.
 
 Hints. `tune()` takes a third argument of one-sentence descriptions; hovering a knob shows its hint and default beside the panel.
+
+## Text and languages
+
+`src/i18n.ts` holds the shell's English under stable ids and `t(id, vars)`, which fills `{name}` placeholders. What a preset declares keeps its English where it is declared, and the panel looks it up with `tr(id, english)`: a knob's label is `<preset>.<KNOB>` and its hint `<preset>.<KNOB>.hint`, a group `group.<name>`, a Ridgeline switch `ridge.<key>`, a gradient `<preset>.follows.<id>` and `.hint`. Preset names are not translated.
+
+The language is the first part of `Spicetify.Locale.getLocale()`, then of `navigator.language`, read on every call; a language without a table, or an id missing from one, falls back to English. The tables in `src/locales/` are keyed by that part (`pt` is Brazilian). `check-presets.js` fails when a table misses an id, has one that does not exist, or has different placeholders. To add a language: copy a table, translate it, add it to `LANGUAGES`, run `npm run check`.
+
+Left in English: dev-build notifications, the clipboard text of Copy (it is pasted back into the code) and the README.
 
 ## Colours
 

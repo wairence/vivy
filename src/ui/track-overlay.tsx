@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { t } from "../i18n";
 import { IconButton, ICON_BACK, ICON_HEART, ICON_HEART_FILLED, ICON_NEXT, ICON_PAUSE, ICON_PLAY } from "./icons";
 import { Track } from "./use-track-data";
 
@@ -65,7 +66,7 @@ export function TrackOverlay({ track, isFullscreen }: { track: Track | null; isF
 	if (!track)
 		return (
 			<div className="vivy-overlay">
-				<div className="vivy-track-name">Start playing a song</div>
+				<div className="vivy-track-name">{t("track.none")}</div>
 			</div>
 		);
 	const shownMs = scrub !== null ? scrub * track.durationMs : progressMs;
@@ -77,7 +78,7 @@ export function TrackOverlay({ track, isFullscreen }: { track: Track | null; isF
 				className={`vivy-progress-track${isFullscreen ? " seek" : ""}${scrub !== null ? " held" : ""}`}
 				onPointerDown={isFullscreen ? seekFrom : undefined}
 				role={isFullscreen ? "slider" : undefined}
-				aria-label={isFullscreen ? "Seek" : undefined}
+				aria-label={isFullscreen ? t("track.seek") : undefined}
 				aria-valuemin={0}
 				aria-valuemax={Math.round(track.durationMs / 1000)}
 				aria-valuenow={Math.round(shownMs / 1000)}
@@ -89,11 +90,11 @@ export function TrackOverlay({ track, isFullscreen }: { track: Track | null; isF
 			</div>
 			{isFullscreen ? (
 				<div className="vivy-controls">
-					<IconButton label="Previous" icon={ICON_BACK} onClick={() => Spicetify.Player.back()} />
-					<IconButton label={playing ? "Pause" : "Play"} icon={playing ? ICON_PAUSE : ICON_PLAY} onClick={() => Spicetify.Player.togglePlay()} />
-					<IconButton label="Next" icon={ICON_NEXT} onClick={() => Spicetify.Player.next()} />
+					<IconButton label={t("track.previous")} icon={ICON_BACK} onClick={() => Spicetify.Player.back()} />
+					<IconButton label={t(playing ? "track.pause" : "track.play")} icon={playing ? ICON_PAUSE : ICON_PLAY} onClick={() => Spicetify.Player.togglePlay()} />
+					<IconButton label={t("track.next")} icon={ICON_NEXT} onClick={() => Spicetify.Player.next()} />
 					<IconButton
-						label={liked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+						label={t(liked ? "track.unlike" : "track.like")}
 						icon={liked ? ICON_HEART_FILLED : ICON_HEART}
 						active={liked}
 						onClick={() => {

@@ -440,4 +440,35 @@ for (const warning of warnings) console.log(`warn  ${warning}`);
 	console.log("ok  frame rate cap (30 / 60 / 120 / monitor, 240 Hz with jitter)");
 }
 
+// Translations: every language has exactly the English ids, with the same {placeholders}.
+{
+	const { EN, LANGUAGES } = require(path.join(OUT, "i18n.js"));
+	const { tuningOf } = require(path.join(OUT, "presets", "tune.js"));
+	const { coloursOf } = require(path.join(OUT, "colours.js"));
+	const english = { ...EN };
+	for (const { id } of PRESETS) {
+		const tuning = tuningOf(id);
+		for (const k of tuning?.knobs ?? []) {
+			english[`${id}.${k.key}`] = k.label;
+			if (k.hint) english[`${id}.${k.key}.hint`] = k.hint;
+			english[`group.${k.group}`] = k.group;
+		}
+		(tuning?.features ?? []).forEach((f, i) => (english[`${id}.${i + 1}`] = f.name));
+		for (const [f, name, what] of coloursOf(id)?.gradients ?? []) {
+			english[`${id}.follows.${f}`] = name;
+			english[`${id}.follows.${f}.hint`] = what;
+		}
+	}
+	const holes = text => (text.match(/\{\w+\}/g) ?? []).sort().join(" ");
+	for (const [lang, table] of Object.entries(LANGUAGES)) {
+		const missing = Object.keys(english).filter(id => !(id in table));
+		const extra = Object.keys(table).filter(id => !(id in english));
+		assert.ok(missing.length === 0, `${lang}: missing ${missing.join(", ")}`);
+		assert.ok(extra.length === 0, `${lang}: no such id ${extra.join(", ")}`);
+		for (const id of Object.keys(english))
+			assert.strictEqual(holes(table[id]), holes(english[id]), `${lang} ${id}: placeholders differ from English`);
+	}
+	console.log(`ok  translations (${Object.keys(LANGUAGES).join(", ")}: ${Object.keys(english).length} ids each)`);
+}
+
 console.log(`\nall ${PRESETS.length} presets ok`);

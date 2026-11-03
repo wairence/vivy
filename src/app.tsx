@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./css/app.css";
 import { DEV } from "./build-stamp";
+import { t } from "./i18n";
 import { announceBuild, markMoment } from "./dev";
 import { Preset, PRESETS } from "./presets";
 import { IconButton, ICON_EXPAND, ICON_KNOBS, ICON_PIP, ICON_SHRINK } from "./ui/icons";
@@ -125,7 +126,7 @@ export default function App() {
 			<div className="vivy-chrome">
 				{/* left, what is shown; right, what is done with the window */}
 				<div className="vivy-top">
-					<nav className="vivy-presets" aria-label="Presets">
+					<nav className="vivy-presets" aria-label={t("presets")}>
 						{PRESETS.map(preset => (
 							<button
 								key={preset.id}
@@ -134,14 +135,14 @@ export default function App() {
 								onClick={() => choosePreset(preset.id)}
 							>
 								{preset.name}
-								{preset.experimental ? <span className="vivy-tag" title="Experimental">exp</span> : null}
+								{preset.experimental ? <span className="vivy-tag" title={t("experimental")}>{t("exp")}</span> : null}
 							</button>
 						))}
 					</nav>
 					<div className="vivy-actions">
-						<IconButton label="Knobs (T)" active={tuneOpen} onClick={() => setTuneOpen(open => !open)} icon={ICON_KNOBS} />
-						<IconButton label={isPip ? "Close mini window (P)" : "Mini window (P)"} active={isPip} onClick={toggleMiniWindow} icon={ICON_PIP} />
-						<IconButton label={isFullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"} onClick={toggleFullscreen} icon={isFullscreen ? ICON_SHRINK : ICON_EXPAND} />
+						<IconButton label={t("button.knobs")} active={tuneOpen} onClick={() => setTuneOpen(open => !open)} icon={ICON_KNOBS} />
+						<IconButton label={t(isPip ? "button.pipClose" : "button.pip")} active={isPip} onClick={toggleMiniWindow} icon={ICON_PIP} />
+						<IconButton label={t(isFullscreen ? "button.fullscreenExit" : "button.fullscreen")} onClick={toggleFullscreen} icon={isFullscreen ? ICON_SHRINK : ICON_EXPAND} />
 					</div>
 				</div>
 				<TrackOverlay track={track} isFullscreen={isFullscreen} />
