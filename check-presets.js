@@ -17,6 +17,7 @@ execFileSync(
 		"src/colours.ts",
 		"src/audio-sync.ts",
 		"src/frame-rate.ts",
+		"src/ui/text.ts",
 		"src/types/audio-analysis.d.ts",
 		"src/types/spicetify.d.ts",
 		"--outDir",
@@ -440,12 +441,14 @@ for (const warning of warnings) console.log(`warn  ${warning}`);
 	console.log("ok  frame rate cap (30 / 60 / 120 / monitor, 240 Hz with jitter)");
 }
 
-// Translations: every language has exactly the English ids, with the same {placeholders}.
+// Translations: every language has exactly the English ids, with the same {placeholders}, in the
+// part shared with the extension (i18n.ts) and in the app's (ui/text.ts); no id is in both.
 {
-	const { EN, LANGUAGES } = require(path.join(OUT, "i18n.js"));
+	const shared = require(path.join(OUT, "i18n.js"));
+	const app = require(path.join(OUT, "ui", "text.js"));
 	const { tuningOf } = require(path.join(OUT, "presets", "tune.js"));
 	const { coloursOf } = require(path.join(OUT, "colours.js"));
-	const english = { ...EN };
+	const english = { ...app.EN };
 	for (const { id } of PRESETS) {
 		const tuning = tuningOf(id);
 		for (const k of tuning?.knobs ?? []) {
@@ -459,16 +462,22 @@ for (const warning of warnings) console.log(`warn  ${warning}`);
 			english[`${id}.follows.${f}.hint`] = what;
 		}
 	}
+	const both = Object.keys(shared.EN).filter(id => id in english);
+	assert.ok(both.length === 0, `translations: ${both.join(", ")} both shared and the app's`);
 	const holes = text => (text.match(/\{\w+\}/g) ?? []).sort().join(" ");
-	for (const [lang, table] of Object.entries(LANGUAGES)) {
-		const missing = Object.keys(english).filter(id => !(id in table));
-		const extra = Object.keys(table).filter(id => !(id in english));
-		assert.ok(missing.length === 0, `${lang}: missing ${missing.join(", ")}`);
-		assert.ok(extra.length === 0, `${lang}: no such id ${extra.join(", ")}`);
-		for (const id of Object.keys(english))
-			assert.strictEqual(holes(table[id]), holes(english[id]), `${lang} ${id}: placeholders differ from English`);
+	for (const [part, en, languages] of [["shared", shared.EN, shared.LANGUAGES], ["app", english, app.LANGUAGES]]) {
+		assert.deepStrictEqual(Object.keys(languages).sort(), Object.keys(shared.LANGUAGES).sort(), `${part}: not the same languages`);
+		for (const [lang, table] of Object.entries(languages)) {
+			const missing = Object.keys(en).filter(id => !(id in table));
+			const extra = Object.keys(table).filter(id => !(id in en));
+			assert.ok(missing.length === 0, `${lang} ${part}: missing ${missing.join(", ")}`);
+			assert.ok(extra.length === 0, `${lang} ${part}: no such id ${extra.join(", ")}`);
+			for (const id of Object.keys(en))
+				assert.strictEqual(holes(table[id]), holes(en[id]), `${lang} ${id}: placeholders differ from English`);
+		}
 	}
-	console.log(`ok  translations (${Object.keys(LANGUAGES).join(", ")}: ${Object.keys(english).length} ids each)`);
+	const count = Object.keys(shared.EN).length + Object.keys(english).length;
+	console.log(`ok  translations (${Object.keys(shared.LANGUAGES).join(", ")}: ${count} ids each)`);
 }
 
 console.log(`\nall ${PRESETS.length} presets ok`);

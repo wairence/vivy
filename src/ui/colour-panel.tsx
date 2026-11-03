@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "../colours";
 import { BEHIND_LYRICS_DEFAULTS, behindLyrics, setBehindLyrics } from "../behind-lyrics";
-import { t, tr } from "../i18n";
+import { t, tr } from "./text";
 import { PRESETS } from "../presets";
 import { currentPicture, isDefaultPicture, Picture, PICTURE_DEFAULTS, PICTURE_RANGE, setPicture } from "./picture";
 

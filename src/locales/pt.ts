@@ -1,5 +1,15 @@
 // Brazilian Portuguese, used for every pt locale
-const pt: Record<string, string> = {
+// also shown by the Spicy Lyrics extension, which bundles only this part
+export const shared: Record<string, string> = {
+	"lyrics.toggleOn": "vivy atrás da letra: {preset}. Clique para desligar",
+	"lyrics.toggleOff": "vivy atrás da letra: desligado. Clique para ligar",
+	"notice.tempoOnly": "Sem análise para “{track}”: usando o andamento ({bpm} BPM). Sem dinâmica por seção.",
+	"notice.noAnalysis": "Sem análise de áudio para “{track}”: a imagem segue um pulso simples.",
+	"notice.noWebgl": "O Drift precisa de WebGL, e este cliente está com ele desligado",
+	"drift.noWebgl": "O Drift precisa de WebGL. Ative a aceleração de hardware nas configurações do Spotify."
+};
+
+export const app: Record<string, string> = {
 	presets: "Presets",
 	experimental: "Experimental",
 	exp: "exp",
@@ -71,16 +81,10 @@ const pt: Record<string, string> = {
 	"lyrics.off": "Desligado",
 	"lyrics.dim": "escurecimento",
 	"lyrics.dim.hint": "Quanto a imagem atrás da letra fica escura, para as palavras continuarem legíveis. Clique duas vezes no nome para restaurar.",
-	"lyrics.toggleOn": "vivy atrás da letra: {preset}. Clique para desligar",
-	"lyrics.toggleOff": "vivy atrás da letra: desligado. Clique para ligar",
 
-	"notice.tempoOnly": "Sem análise para “{track}”: usando o andamento ({bpm} BPM). Sem dinâmica por seção.",
-	"notice.noAnalysis": "Sem análise de áudio para “{track}”: a imagem segue um pulso simples.",
 	"notice.feature": "{preset} {n}: {name} {state}",
 	"notice.featureOn": "LIGADO",
 	"notice.featureOff": "desligado",
-	"notice.noWebgl": "O Drift precisa de WebGL, e este cliente está com ele desligado",
-	"drift.noWebgl": "O Drift precisa de WebGL. Ative a aceleração de hardware nas configurações do Spotify.",
 
 	"pip.unsupported": "Esta versão do Spotify não tem janela picture-in-picture",
 	"pip.failed": "Picture-in-picture: {error}",
@@ -278,4 +282,3 @@ const pt: Record<string, string> = {
 	"layers3d.follows.music.hint": "Tudo desliza pelas cores conforme o volume da música"
 };
 
-export default pt;

@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FRAME_RATES, frameRate, setFrameRate } from "../frame-rate";
-import { t, tr } from "../i18n";
+import { t, tr } from "./text";
 import { Knob, movedText, resetKnobs, setKnob, tuningOf } from "../presets/tune";
 import { ColourSection, LyricsSection, PictureSection } from "./colour-panel";
 import { IconButton, ICON_CLOSE, ICON_COPY, ICON_RESET } from "./icons";

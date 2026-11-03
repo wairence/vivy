@@ -1,4 +1,14 @@
-const es: Record<string, string> = {
+// also shown by the Spicy Lyrics extension, which bundles only this part
+export const shared: Record<string, string> = {
+	"lyrics.toggleOn": "vivy detrás de la letra: {preset}. Clic para desactivar",
+	"lyrics.toggleOff": "vivy detrás de la letra: desactivado. Clic para activar",
+	"notice.tempoOnly": "Sin análisis para “{track}”: se usa su tempo ({bpm} BPM). Sin dinámica por secciones.",
+	"notice.noAnalysis": "Sin análisis de audio para “{track}”: la imagen sigue un pulso simple.",
+	"notice.noWebgl": "Drift necesita WebGL, y este cliente lo tiene desactivado",
+	"drift.noWebgl": "Drift necesita WebGL. Activa la aceleración por hardware en los ajustes de Spotify."
+};
+
+export const app: Record<string, string> = {
 	presets: "Presets",
 	experimental: "Experimental",
 	exp: "exp",
@@ -70,16 +80,10 @@ const es: Record<string, string> = {
 	"lyrics.off": "No",
 	"lyrics.dim": "oscuridad",
 	"lyrics.dim.hint": "Lo oscura que queda la imagen detrás de la letra, para que se lea bien. Doble clic en el nombre para restablecer.",
-	"lyrics.toggleOn": "vivy detrás de la letra: {preset}. Clic para desactivar",
-	"lyrics.toggleOff": "vivy detrás de la letra: desactivado. Clic para activar",
 
-	"notice.tempoOnly": "Sin análisis para “{track}”: se usa su tempo ({bpm} BPM). Sin dinámica por secciones.",
-	"notice.noAnalysis": "Sin análisis de audio para “{track}”: la imagen sigue un pulso simple.",
 	"notice.feature": "{preset} {n}: {name} {state}",
 	"notice.featureOn": "SÍ",
 	"notice.featureOff": "no",
-	"notice.noWebgl": "Drift necesita WebGL, y este cliente lo tiene desactivado",
-	"drift.noWebgl": "Drift necesita WebGL. Activa la aceleración por hardware en los ajustes de Spotify.",
 
 	"pip.unsupported": "Esta versión de Spotify no tiene ventana flotante",
 	"pip.failed": "Ventana flotante: {error}",
@@ -277,4 +281,3 @@ const es: Record<string, string> = {
 	"layers3d.follows.music.hint": "Todo se desliza por los colores según lo fuerte que suena la música"
 };
 
-export default es;

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./css/app.css";
 import { DEV } from "./build-stamp";
-import { t } from "./i18n";
+import { t, tr } from "./ui/text";
 import { announceBuild, markMoment } from "./dev";
 import { Preset, PRESETS } from "./presets";
+import { tuningOf } from "./presets/tune";
 import { IconButton, ICON_EXPAND, ICON_KNOBS, ICON_PIP, ICON_SHRINK } from "./ui/icons";
 import { IDLE_HIDE_MS } from "./ui/mini-window";
 import { showPictureOn } from "./ui/picture";
@@ -19,6 +20,16 @@ const createPreset = (id: string) => PRESETS.find(p => p.id === id)!.create();
 function loadStoredPresetId(): string {
 	const stored = typeof localStorage !== "undefined" ? localStorage.getItem(PRESET_STORAGE_KEY) : null;
 	return stored && PRESETS.some(p => p.id === stored) ? stored : PRESETS[0].id;
+}
+
+function showFeature(presetId: string, n: number) {
+	window.dispatchEvent(new CustomEvent("visualizer-feature", { detail: { preset: presetId, n } }));
+	// the preset's own listener has flipped it by now
+	const feature = tuningOf(presetId)?.features[n - 1];
+	if (!feature) return;
+	const preset = PRESETS.find(p => p.id === presetId)!.name;
+	const state = t(feature.on ? "notice.featureOn" : "notice.featureOff");
+	Spicetify.showNotification(t("notice.feature", { preset, n, name: tr(`${presetId}.${n}`, feature.name), state }));
 }
 
 export default function App() {
@@ -84,7 +95,7 @@ export default function App() {
 			// never steal a keystroke from a text field; a slider or checkbox keeps focus after a click and takes no letters
 			if (target && (target.isContentEditable || target.matches?.("textarea, input:not([type=range], [type=checkbox], [type=radio])"))) return;
 			e.preventDefault();
-			if (digit) window.dispatchEvent(new CustomEvent("visualizer-feature", { detail: { preset: presetIdRef.current, n: Number(key) } }));
+			if (digit) showFeature(presetIdRef.current, Number(key));
 			else if (key === "p") toggleMiniWindow();
 			else if (key === "t") setTuneOpen(open => !open);
 			else if (key === "f") toggleFullscreen();

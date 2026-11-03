@@ -9,7 +9,6 @@ import { accentLightness, colourSettings, familyHue, GREY, hslToRgb, palette, pa
 import { sampleCurve, segmentAt, TrackAudioData } from "../audio-data";
 import { Preset, PresetDefinition, rgbString } from "./types";
 import { tune, tuneFeatures, tuneVersion } from "./tune";
-import { t, tr } from "../i18n";
 
 // ---- the extras, in the order of their keys ---------------------------------------------------------
 const FEATURES = {
@@ -30,9 +29,6 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
 		const feature = detail && detail.preset === ridgePreset.id ? FEATURE_KEYS[detail.n - 1] : undefined;
 		if (!feature) return;
 		feature.on = !feature.on;
-		if (typeof Spicetify === "undefined") return;
-		const name = tr(`ridge.${detail!.n}`, feature.name);
-		Spicetify.showNotification(t("notice.feature", { preset: ridgePreset.name, n: detail!.n, name, state: t(feature.on ? "notice.featureOn" : "notice.featureOff") }));
 	});
 }
 

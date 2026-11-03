@@ -1,4 +1,14 @@
-const ru: Record<string, string> = {
+// also shown by the Spicy Lyrics extension, which bundles only this part
+export const shared: Record<string, string> = {
+	"lyrics.toggleOn": "vivy за текстом: {preset}. Нажмите, чтобы выключить",
+	"lyrics.toggleOff": "vivy за текстом: выключено. Нажмите, чтобы включить",
+	"notice.tempoOnly": "Нет анализа для «{track}»: взят только темп ({bpm} BPM), без динамики частей.",
+	"notice.noAnalysis": "Нет аудиоанализа для «{track}»: картинка идёт за простым пульсом.",
+	"notice.noWebgl": "Drift нужен WebGL, а в этом клиенте он выключен",
+	"drift.noWebgl": "Drift нужен WebGL. Включите аппаратное ускорение в настройках Spotify."
+};
+
+export const app: Record<string, string> = {
 	presets: "Пресеты",
 	experimental: "Экспериментальный",
 	exp: "эксп",
@@ -70,16 +80,10 @@ const ru: Record<string, string> = {
 	"lyrics.off": "Выкл.",
 	"lyrics.dim": "затемнение",
 	"lyrics.dim.hint": "Насколько темна картинка за текстом, чтобы слова читались. Двойной щелчок по названию сбрасывает.",
-	"lyrics.toggleOn": "vivy за текстом: {preset}. Нажмите, чтобы выключить",
-	"lyrics.toggleOff": "vivy за текстом: выключено. Нажмите, чтобы включить",
 
-	"notice.tempoOnly": "Нет анализа для «{track}»: взят только темп ({bpm} BPM), без динамики частей.",
-	"notice.noAnalysis": "Нет аудиоанализа для «{track}»: картинка идёт за простым пульсом.",
 	"notice.feature": "{preset} {n}: {name} {state}",
 	"notice.featureOn": "ВКЛ",
 	"notice.featureOff": "выкл",
-	"notice.noWebgl": "Drift нужен WebGL, а в этом клиенте он выключен",
-	"drift.noWebgl": "Drift нужен WebGL. Включите аппаратное ускорение в настройках Spotify.",
 
 	"pip.unsupported": "В этой сборке Spotify нет окна «картинка в картинке»",
 	"pip.failed": "Картинка в картинке: {error}",
@@ -287,4 +291,3 @@ const ru: Record<string, string> = {
 	"layers3d.follows.music.hint": "Всё скользит по цветам вслед за громкостью музыки"
 };
 
-export default ru;

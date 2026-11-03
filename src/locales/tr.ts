@@ -1,4 +1,14 @@
-const turkish: Record<string, string> = {
+// also shown by the Spicy Lyrics extension, which bundles only this part
+export const shared: Record<string, string> = {
+	"lyrics.toggleOn": "Sözlerin arkasında vivy: {preset}. Kapatmak için tıkla",
+	"lyrics.toggleOff": "Sözlerin arkasında vivy: kapalı. Açmak için tıkla",
+	"notice.tempoOnly": "“{track}” için analiz yok: yalnızca temposu kullanılıyor ({bpm} BPM). Bölüm dinamiği yok.",
+	"notice.noAnalysis": "“{track}” için ses analizi yok: görüntü basit bir nabzı izliyor.",
+	"notice.noWebgl": "Drift için WebGL gerekiyor ve bu istemcide kapalı",
+	"drift.noWebgl": "Drift için WebGL gerekiyor. Spotify ayarlarından donanım hızlandırmayı aç."
+};
+
+export const app: Record<string, string> = {
 	presets: "Ön ayarlar",
 	experimental: "Deneysel",
 	exp: "deney",
@@ -70,16 +80,10 @@ const turkish: Record<string, string> = {
 	"lyrics.off": "Kapalı",
 	"lyrics.dim": "karartma",
 	"lyrics.dim.hint": "Sözlerin arkasındaki görüntünün ne kadar karanlık olduğu, sözler okunur kalsın diye. Sıfırlamak için ada çift tıkla.",
-	"lyrics.toggleOn": "Sözlerin arkasında vivy: {preset}. Kapatmak için tıkla",
-	"lyrics.toggleOff": "Sözlerin arkasında vivy: kapalı. Açmak için tıkla",
 
-	"notice.tempoOnly": "“{track}” için analiz yok: yalnızca temposu kullanılıyor ({bpm} BPM). Bölüm dinamiği yok.",
-	"notice.noAnalysis": "“{track}” için ses analizi yok: görüntü basit bir nabzı izliyor.",
 	"notice.feature": "{preset} {n}: {name} {state}",
 	"notice.featureOn": "AÇIK",
 	"notice.featureOff": "kapalı",
-	"notice.noWebgl": "Drift için WebGL gerekiyor ve bu istemcide kapalı",
-	"drift.noWebgl": "Drift için WebGL gerekiyor. Spotify ayarlarından donanım hızlandırmayı aç.",
 
 	"pip.unsupported": "Bu Spotify sürümünde resim içinde resim penceresi yok",
 	"pip.failed": "Resim içinde resim: {error}",
@@ -276,4 +280,3 @@ const turkish: Record<string, string> = {
 	"layers3d.follows.music.hint": "Her şey müziğin ne kadar yüksek olduğuna göre renkler boyunca kayar"
 };
 
-export default turkish;

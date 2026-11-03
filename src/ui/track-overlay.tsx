@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { t } from "../i18n";
+import { t } from "./text";
 import { IconButton, ICON_BACK, ICON_HEART, ICON_HEART_FILLED, ICON_NEXT, ICON_PAUSE, ICON_PLAY } from "./icons";
 import { Track } from "./use-track-data";
 

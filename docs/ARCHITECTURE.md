@@ -42,7 +42,7 @@ The extension for Spicy Lyrics calls `track-data.ts` and the presets directly, w
 | `src/presets/effects.ts` | the key's hue lean, glow, the flare's hue lean (`shimmerHue`) |
 | `src/presets/next-sound.ts` | the next sound's properties, for Drift |
 | `src/presets/tune.ts` | live knobs |
-| `src/i18n.ts`, `src/locales/*.ts` | the UI's text: English, `t()`, and one table per language |
+| `src/i18n.ts`, `src/ui/text.ts`, `src/locales/*.ts` | the text: English, `t()`, and one table per language |
 | `src/presets/ridge.ts`, `layers3d.ts` | the two presets |
 
 ## Loading the analysis
@@ -161,9 +161,9 @@ Hints. `tune()` takes a third argument of one-sentence descriptions; hovering a 
 
 ## Text and languages
 
-`src/i18n.ts` holds the shell's English under stable ids and `t(id, vars)`, which fills `{name}` placeholders. What a preset declares keeps its English where it is declared, and the panel looks it up with `tr(id, english)`: a knob's label is `<preset>.<KNOB>` and its hint `<preset>.<KNOB>.hint`, a group `group.<name>`, a Ridgeline switch `ridge.<key>`, a gradient `<preset>.follows.<id>` and `.hint`. Preset names are not translated.
+`src/ui/text.ts` holds the app's English under stable ids and `t(id, vars)`, which fills `{name}` placeholders. `src/i18n.ts` holds the language lookup and the few strings that code shared with the Spicy Lyrics extension shows (its toggle titles, the no-analysis notices, Drift's WebGL message), with its own `t`; each locale file has a `shared` part for these and an `app` part, and the extension bundles only the `shared` parts. What a preset declares keeps its English where it is declared, and the panel looks it up with `tr(id, english)`: a knob's label is `<preset>.<KNOB>` and its hint `<preset>.<KNOB>.hint`, a group `group.<name>`, a Ridgeline switch `ridge.<key>`, a gradient `<preset>.follows.<id>` and `.hint`. Preset names are not translated.
 
-The language is the first part of `Spicetify.Locale.getLocale()`, then of `navigator.language`, read on every call; a language without a table, or an id missing from one, falls back to English. The tables in `src/locales/` are keyed by that part (`pt` is Brazilian). `check-presets.js` fails when a table misses an id, has one that does not exist, or has different placeholders. To add a language: copy a table, translate it, add it to `LANGUAGES`, run `npm run check`.
+The language is the first part of `Spicetify.Locale.getLocale()`, then of `navigator.language`, read on every call; a language without a table, or an id missing from one, falls back to English. The tables in `src/locales/` are keyed by that part (`pt` is Brazilian). `check-presets.js` fails when a table misses an id, has one that does not exist, has different placeholders, or an id is in both parts. To add a language: copy a locale file, translate it, add it to `LANGUAGES` in both `i18n.ts` and `ui/text.ts`, run `npm run check`.
 
 Left in English: dev-build notifications, the clipboard text of Copy (it is pasted back into the code) and the README.
 

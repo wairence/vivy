@@ -3,7 +3,7 @@
 // It has no frame in this client, so it is moved by a drag region and sized with resizeTo, the way
 // Spotify's own miniplayer is.
 
-import { t } from "../i18n";
+import { t } from "./text";
 import { refreshPicture } from "./picture";
 
 export const IDLE_HIDE_MS = 2500;

@@ -1,4 +1,14 @@
-const de: Record<string, string> = {
+// also shown by the Spicy Lyrics extension, which bundles only this part
+export const shared: Record<string, string> = {
+	"lyrics.toggleOn": "vivy hinter dem Songtext: {preset}. Klicken zum Ausschalten",
+	"lyrics.toggleOff": "vivy hinter dem Songtext: aus. Klicken zum Einschalten",
+	"notice.tempoOnly": "Keine Analyse für „{track}“: es wird nur das Tempo genutzt ({bpm} BPM). Keine Dynamik der Abschnitte.",
+	"notice.noAnalysis": "Keine Audioanalyse für „{track}“: das Bild folgt einem einfachen Puls.",
+	"notice.noWebgl": "Drift braucht WebGL, und in diesem Client ist es ausgeschaltet",
+	"drift.noWebgl": "Drift braucht WebGL. Schalte die Hardwarebeschleunigung in den Spotify-Einstellungen ein."
+};
+
+export const app: Record<string, string> = {
 	presets: "Presets",
 	experimental: "Experimentell",
 	exp: "exp",
@@ -70,16 +80,10 @@ const de: Record<string, string> = {
 	"lyrics.off": "Aus",
 	"lyrics.dim": "Abdunklung",
 	"lyrics.dim.hint": "Wie dunkel das Bild hinter dem Songtext ist, damit die Worte lesbar bleiben. Doppelklick auf den Namen setzt zurück.",
-	"lyrics.toggleOn": "vivy hinter dem Songtext: {preset}. Klicken zum Ausschalten",
-	"lyrics.toggleOff": "vivy hinter dem Songtext: aus. Klicken zum Einschalten",
 
-	"notice.tempoOnly": "Keine Analyse für „{track}“: es wird nur das Tempo genutzt ({bpm} BPM). Keine Dynamik der Abschnitte.",
-	"notice.noAnalysis": "Keine Audioanalyse für „{track}“: das Bild folgt einem einfachen Puls.",
 	"notice.feature": "{preset} {n}: {name} {state}",
 	"notice.featureOn": "AN",
 	"notice.featureOff": "aus",
-	"notice.noWebgl": "Drift braucht WebGL, und in diesem Client ist es ausgeschaltet",
-	"drift.noWebgl": "Drift braucht WebGL. Schalte die Hardwarebeschleunigung in den Spotify-Einstellungen ein.",
 
 	"pip.unsupported": "Diese Spotify-Version hat kein Bild-im-Bild-Fenster",
 	"pip.failed": "Bild im Bild: {error}",
@@ -277,4 +281,3 @@ const de: Record<string, string> = {
 	"layers3d.follows.music.hint": "Alles gleitet mit der Lautstärke der Musik durch die Farben"
 };
 
-export default de;

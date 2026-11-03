@@ -1,4 +1,14 @@
-const ja: Record<string, string> = {
+// also shown by the Spicy Lyrics extension, which bundles only this part
+export const shared: Record<string, string> = {
+	"lyrics.toggleOn": "歌詞の背景に vivy: {preset}。クリックでオフ",
+	"lyrics.toggleOff": "歌詞の背景に vivy: オフ。クリックでオン",
+	"notice.tempoOnly": "「{track}」の解析がありません。テンポ ({bpm} BPM) だけを使います。セクションごとの強弱はありません。",
+	"notice.noAnalysis": "「{track}」の音声解析がありません。画面は単純な脈動に合わせて動きます。",
+	"notice.noWebgl": "Drift には WebGL が必要ですが、このクライアントでは無効になっています",
+	"drift.noWebgl": "Drift には WebGL が必要です。Spotify の設定でハードウェアアクセラレーションをオンにしてください。"
+};
+
+export const app: Record<string, string> = {
 	presets: "プリセット",
 	experimental: "試験的",
 	exp: "試験",
@@ -70,16 +80,10 @@ const ja: Record<string, string> = {
 	"lyrics.off": "オフ",
 	"lyrics.dim": "暗さ",
 	"lyrics.dim.hint": "歌詞の後ろの画面をどれだけ暗くするか。文字が読めるように。名前をダブルクリックで戻します。",
-	"lyrics.toggleOn": "歌詞の背景に vivy: {preset}。クリックでオフ",
-	"lyrics.toggleOff": "歌詞の背景に vivy: オフ。クリックでオン",
 
-	"notice.tempoOnly": "「{track}」の解析がありません。テンポ ({bpm} BPM) だけを使います。セクションごとの強弱はありません。",
-	"notice.noAnalysis": "「{track}」の音声解析がありません。画面は単純な脈動に合わせて動きます。",
 	"notice.feature": "{preset} {n}: {name} {state}",
 	"notice.featureOn": "オン",
 	"notice.featureOff": "オフ",
-	"notice.noWebgl": "Drift には WebGL が必要ですが、このクライアントでは無効になっています",
-	"drift.noWebgl": "Drift には WebGL が必要です。Spotify の設定でハードウェアアクセラレーションをオンにしてください。",
 
 	"pip.unsupported": "この Spotify にはピクチャーインピクチャーのウィンドウがありません",
 	"pip.failed": "ピクチャーインピクチャー: {error}",
@@ -267,4 +271,3 @@ const ja: Record<string, string> = {
 	"layers3d.follows.music.hint": "音楽の大きさに合わせてすべてが色の上を移ります"
 };
 
-export default ja;
