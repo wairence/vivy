@@ -1,19 +1,12 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FRAME_RATES, frameRate, setFrameRate } from "../frame-rate";
+import { t, tr } from "./text";
 import { Knob, movedText, resetKnobs, setKnob, tuningOf } from "../presets/tune";
 import { ColourSection, LyricsSection, PictureSection } from "./colour-panel";
 import { IconButton, ICON_CLOSE, ICON_COPY, ICON_RESET } from "./icons";
 
 type Tab = "preset" | "colour" | "picture" | "lyrics";
-const TABS: [Tab, string][] = [
-	["preset", "Preset"],
-	["colour", "Colour"],
-	["picture", "Picture"],
-	["lyrics", "Lyrics"]
-];
-
-const FRAME_RATE_HINT =
-	"Pictures drawn per second. Lower takes load off the graphics card on a fast monitor; movement keeps its speed, only smoothness changes. Monitor draws every frame the screen shows.";
+const TABS: Tab[] = ["preset", "colour", "picture", "lyrics"];
 
 // The knobs panel (T), in tabs. Preset: the preset on screen's numbers as sliders, double-click a name
 // to reset it, "Copy" puts the moved values on the clipboard, to become the new defaults in tune(...).
@@ -71,7 +64,7 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 	const [tab, setTab] = useState<Tab>(() => {
 		try {
 			const stored = localStorage.getItem("vivy:tab");
-			return TABS.some(([id]) => id === stored) ? (stored as Tab) : "preset";
+			return TABS.some(id => id === stored) ? (stored as Tab) : "preset";
 		} catch {
 			return "preset";
 		}
@@ -85,7 +78,7 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 			// opens on the first tab next time
 		}
 	};
-	const t = tuningOf(presetId);
+	const tuning = tuningOf(presetId);
 	const refresh = () => redraw(n => n + 1);
 	// a feature flipped with its number key (the preset's own listener runs first)
 	useEffect(() => {
@@ -95,7 +88,7 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 	const copy = () => {
 		const text = movedText(presetId);
 		navigator.clipboard?.writeText(text || "nothing moved").catch(() => {});
-		Spicetify.showNotification(text ? "Moved knobs copied" : "Nothing moved yet");
+		Spicetify.showNotification(t(text ? "panel.copied" : "panel.nothingMoved"));
 	};
 	const explain = (text: string, foot: string, row: HTMLElement) => {
 		const panel = panelRef.current;
@@ -105,12 +98,12 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 		setHint({ text, foot, top: row.getBoundingClientRect().top - p.top, right: p.right - panel.getBoundingClientRect().left + 10 });
 	};
 	const showHint = (knob: Knob, row: HTMLElement) =>
-		explain(knob.hint, `default ${+knob.def.toPrecision(3)} · double-click the name to reset`, row);
+		explain(knob.hint && tr(`${presetId}.${knob.key}.hint`, knob.hint), t("panel.knobFoot", { value: +knob.def.toPrecision(3) }), row);
 	const knobs = (list: Knob[]) => {
 		let group = "";
 		return list.map(k => {
-			const value = t!.values[k.key];
-			const head = k.group !== group ? <div className="vivy-tune-group">{(group = k.group)}</div> : null;
+			const value = tuning!.values[k.key];
+			const head = k.group !== group ? <div className="vivy-tune-group">{tr(`group.${(group = k.group)}`, k.group)}</div> : null;
 			return (
 				<React.Fragment key={k.key}>
 					{head}
@@ -122,7 +115,7 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 						onBlur={() => setHint(null)}
 					>
 						<div className="vivy-tune-label" onDoubleClick={() => (setKnob(presetId, k.key, k.def), refresh())}>
-							<span>{k.label}</span>
+							<span>{tr(`${presetId}.${k.key}`, k.label)}</span>
 							<span>{+value.toPrecision(3)}</span>
 						</div>
 						<input
@@ -143,45 +136,45 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 			<div className="vivy-tune" ref={panelRef} onMouseDown={e => e.stopPropagation()} onScroll={() => (setHint(null), measureBar())}>
 				<div className="vivy-tune-head">
 					<div className="vivy-tune-title">
-						<b>Knobs</b>
+						<b>{t("panel.title")}</b>
 						{tab === "preset" ? (
 							<>
-								<IconButton small label="Copy moved values" icon={ICON_COPY} onClick={copy} />
-								<IconButton small label="Reset all to defaults" icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
+								<IconButton small label={t("panel.copy")} icon={ICON_COPY} onClick={copy} />
+								<IconButton small label={t("panel.reset")} icon={ICON_RESET} onClick={() => (resetKnobs(presetId), refresh())} />
 							</>
 						) : null}
-						<IconButton small label="Close (T)" icon={ICON_CLOSE} onClick={onClose} />
+						<IconButton small label={t("panel.close")} icon={ICON_CLOSE} onClick={onClose} />
 					</div>
 					<div className="vivy-seg vivy-tabs" role="tablist">
-						{TABS.map(([id, name]) => (
+						{TABS.map(id => (
 							<button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => chooseTab(id)}>
-								{name}
+								{t(`tab.${id}`)}
 							</button>
 						))}
 					</div>
 				</div>
 				{tab === "preset" ? (
 					<>
-						{!t || (t.knobs.length === 0 && t.features.length === 0) ? <div className="vivy-tune-none">This preset has no knobs yet.</div> : null}
-						{t ? knobs(t.knobs.filter(k => k.basic)) : null}
-						{t && (t.features.length > 0 || t.knobs.some(k => !k.basic)) ? (
+						{!tuning || (tuning.knobs.length === 0 && tuning.features.length === 0) ? <div className="vivy-tune-none">{t("panel.noKnobs")}</div> : null}
+						{tuning ? knobs(tuning.knobs.filter(k => k.basic)) : null}
+						{tuning && (tuning.features.length > 0 || tuning.knobs.some(k => !k.basic)) ? (
 							<button className={`vivy-more${more ? " on" : ""}`} aria-expanded={more} onClick={toggleMore}>
-								<span>{more ? "Fewer settings" : "More settings"}</span>
+								<span>{t(more ? "panel.fewer" : "panel.more")}</span>
 								<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 									<path d="M6 9l6 6 6-6" />
 								</svg>
 							</button>
 						) : null}
-						{more && t ? (
+						{more && tuning ? (
 							<>
-								{t.features.length > 0 ? <div className="vivy-tune-group">effects</div> : null}
-								{t.features.map((f, i) => (
+								{tuning.features.length > 0 ? <div className="vivy-tune-group">{t("panel.effects")}</div> : null}
+								{tuning.features.map((f, i) => (
 									<label key={f.name} className="vivy-tune-feature">
 										<input type="checkbox" checked={f.on} onChange={() => ((f.on = !f.on), refresh())} />
-										{i + 1}. {f.name}
+										{i + 1}. {tr(`${presetId}.${i + 1}`, f.name)}
 									</label>
 								))}
-								{knobs(t.knobs.filter(k => !k.basic))}
+								{knobs(tuning.knobs.filter(k => !k.basic))}
 							</>
 						) : null}
 					</>
@@ -192,17 +185,17 @@ export function TunePanel({ presetId, onClose }: { presetId: string; onClose: ()
 				{tab === "picture" ? (
 					<>
 						<PictureSection explain={(text, row) => explain(text, "", row)} unexplain={() => setHint(null)} />
-						<div className="vivy-tune-sub">frame rate</div>
+						<div className="vivy-tune-sub">{t("fps.title")}</div>
 						<div className="vivy-seg">
 							{FRAME_RATES.map(fps => (
 								<button
 									key={fps}
 									className={frameRate() === fps ? "on" : ""}
-									onMouseEnter={e => explain(FRAME_RATE_HINT, "applies to every preset", e.currentTarget)}
+									onMouseEnter={e => explain(t("fps.hint"), t("fps.foot"), e.currentTarget)}
 									onMouseLeave={() => setHint(null)}
 									onClick={() => (setFrameRate(fps), refresh())}
 								>
-									{fps || "Monitor"}
+									{fps || t("fps.monitor")}
 								</button>
 							))}
 						</div>

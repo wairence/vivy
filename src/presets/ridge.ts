@@ -29,7 +29,6 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
 		const feature = detail && detail.preset === ridgePreset.id ? FEATURE_KEYS[detail.n - 1] : undefined;
 		if (!feature) return;
 		feature.on = !feature.on;
-		if (typeof Spicetify !== "undefined") Spicetify.showNotification(`Ridgeline ${detail!.n}: ${feature.name} ${feature.on ? "ON" : "off"}`);
 	});
 }
 

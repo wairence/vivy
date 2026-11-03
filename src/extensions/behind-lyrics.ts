@@ -4,6 +4,7 @@ import { AudioSync, createSmoothClock } from "../audio-sync";
 import { BehindLyrics, behindLyrics, onBehindLyricsChange, setBehindLyrics } from "../behind-lyrics";
 import { Rgb } from "../colours";
 import { createFramePacer, frameRate, renderSize } from "../frame-rate";
+import { t } from "../i18n";
 import { Preset, PRESETS } from "../presets";
 import { DEFAULT_COVER, watchTrackData } from "../track-data";
 import { paintBackdrop, storedPicture } from "../ui/picture";
@@ -292,6 +293,6 @@ function showToggleState(settings: BehindLyrics) {
 	const button = document.getElementById(TOGGLE_ID);
 	if (!button) return;
 	const name = PRESETS.find(p => p.id === settings.preset)?.name ?? "vivy";
-	button.title = settings.on ? `vivy behind the lyrics: ${name}. Click to turn off` : "vivy behind the lyrics: off. Click to turn on";
+	button.title = settings.on ? t("lyrics.toggleOn", { preset: name }) : t("lyrics.toggleOff");
 	button.style.opacity = settings.on ? "" : "0.45";
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- vivy follows Spotify's language: Russian, Spanish, Brazilian Portuguese, German, Japanese and Turkish, English otherwise (#7). Preset names stay as they are.
+
 ## 0.3.0 — 2026-10-31
 
 - Spicy Lyrics: vivy can draw behind its lyrics, on its page, in its fullscreen and in its cinema mode, where it also follows the theme's picture from track to track. A button with vivy's mark in Spicy Lyrics' controls turns it on; the Lyrics tab of the settings picks the preset and how dark it is. Behind the lyrics Drift runs at up to 120 fps, as it shares the work with Spicy Lyrics. It is a second file in the app, `behind-lyrics.js`, which Spotify loads at startup. Update by unzipping over the old folder and running `spicetify apply`.

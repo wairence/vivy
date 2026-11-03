@@ -12,6 +12,7 @@ import { accentLightness, colourSettings, distinctCover, familyHue, Hsl, hslToRg
 import { createNextSound } from "./next-sound";
 import { Preset, PresetDefinition, publishDiagnostics } from "./types";
 import { tune, tuneVersion } from "./tune";
+import { t } from "../i18n";
 
 // ---- the scene, in world units -----------------------------------------------------------------------
 const CLOUD = 2.496;
@@ -426,7 +427,7 @@ function create(): Preset {
 	let renderer = makeRenderer();
 	let rendererLost = false;
 	let retryAt = 0;
-	if (!renderer && typeof Spicetify !== "undefined") Spicetify.showNotification("Drift needs WebGL, and this client has it switched off");
+	if (!renderer && typeof Spicetify !== "undefined") Spicetify.showNotification(t("notice.noWebgl"));
 
 	const scatter = (p: Particle) => {
 		for (;;) {
@@ -1083,7 +1084,7 @@ function create(): Preset {
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
 				ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
-				ctx.fillText("Drift needs WebGL. Turn on hardware acceleration in Spotify's settings.", width / 2, height / 2);
+				ctx.fillText(t("drift.noWebgl"), width / 2, height / 2);
 				return;
 			}
 			renderer.draw(

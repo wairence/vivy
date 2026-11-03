@@ -2,11 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Colours, ColourMode, coloursOf, hexToRgb, rgbToHex, setColours } from "../colours";
 import { BEHIND_LYRICS_DEFAULTS, behindLyrics, setBehindLyrics } from "../behind-lyrics";
+import { t, tr } from "./text";
 import { PRESETS } from "../presets";
 import { currentPicture, isDefaultPicture, Picture, PICTURE_DEFAULTS, PICTURE_RANGE, setPicture } from "./picture";
-
-const BEHIND_LYRICS_HINT =
-	"A preset in place of Spicy Lyrics' own background, on its page and in its fullscreen. Needs the Spicy Lyrics extension; the button with vivy's mark in its controls turns it on and off.";
 
 // The sections of the knobs panel other than the preset's own knobs: colour, picture, lyrics.
 // The colour picker opens beside the panel, because the panel's scrolling would cut it off.
@@ -84,8 +82,8 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 		const doc = box.current?.ownerDocument;
 		if (!doc) return;
 		const away = (e: MouseEvent) => {
-			const t = e.target as Element | null;
-			if (box.current?.contains(t) || t?.closest?.(".vivy-swatch")) return;
+			const target = e.target as Element | null;
+			if (box.current?.contains(target) || target?.closest?.(".vivy-swatch")) return;
 			onClose();
 		};
 		const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -120,23 +118,15 @@ function Picker({ hex, onChange, onRemove, onClose, top, right }: {
 						}
 					}}
 				/>
-				{onRemove ? <button onClick={onRemove}>Remove</button> : null}
+				{onRemove ? <button onClick={onRemove}>{t("colour.remove")}</button> : null}
 			</div>
 		</div>
 	);
 }
 
-const PICTURE_KNOBS: [keyof Picture, string, string][] = [
-	["brightness", "brightness", "Darker or lighter, the whole picture."],
-	["contrast", "contrast", "Lifts or deepens the midtones; black stays black and white stays white."],
-	["saturation", "saturation", "From grey to stronger colour."],
-	["transparency", "transparency", "Thins the black under the lines. With a theme that has a picture, the picture shows through; with Spotify's own look, the cover, blurred."]
-];
+const PICTURE_KNOBS: (keyof Picture)[] = ["brightness", "contrast", "saturation", "transparency"];
 
-const MODES: [ColourMode, string, string][] = [
-	["cover", "Cover", "The colours come from the album cover and change with every track."],
-	["custom", "Custom", "Your own two or three colours, the same for every track."]
-];
+const MODES: ColourMode[] = ["cover", "custom"];
 
 export function ColourSection({ presetId, panel, explain, unexplain }: {
 	presetId: string;
@@ -172,14 +162,14 @@ export function ColourSection({ presetId, panel, explain, unexplain }: {
 	return (
 		<>
 			<div className="vivy-seg">
-				{MODES.map(([m, name, what]) => (
+				{MODES.map(m => (
 					<button
 						key={m}
 						className={colours.mode === m ? "on" : ""}
-						onMouseEnter={e => explain(what, e.currentTarget)}
+						onMouseEnter={e => explain(t(`mode.${m}.hint`), e.currentTarget)}
 						onMouseLeave={unexplain}
 						onClick={() => (setEditing(null), set({ mode: m }))}>
-						{name}
+						{t(`mode.${m}`)}
 					</button>
 				))}
 			</div>
@@ -190,16 +180,16 @@ export function ColourSection({ presetId, panel, explain, unexplain }: {
 							key={i}
 							className={`vivy-swatch${editing?.i === i ? " on" : ""}`}
 							style={{ background: hex }}
-							title="Change this colour"
-							aria-label={`Colour ${i + 1}: ${hex}`}
+							title={t("colour.change")}
+							aria-label={t("colour.n", { n: i + 1, hex })}
 							onClick={e => open(i, e.currentTarget)}
 						/>
 					))}
 					{stops.length < 3 ? (
 						<button
 							className="vivy-swatch add"
-							title="Add a colour"
-							aria-label="Add a colour"
+							title={t("colour.add")}
+							aria-label={t("colour.add")}
 							onClick={e => {
 								set({ stops: [...stops, stops[stops.length - 1]] });
 								open(stops.length, e.currentTarget);
@@ -211,29 +201,29 @@ export function ColourSection({ presetId, panel, explain, unexplain }: {
 					<div className="vivy-ramp" style={{ background: `linear-gradient(90deg, ${stops.join(", ")})` }} />
 				</div>
 			) : null}
-			<div className="vivy-tune-sub">gradient follows</div>
+			<div className="vivy-tune-sub">{t("colour.follows")}</div>
 			<div className="vivy-seg">
 				{own.gradients.map(([f, name, what]) => (
 					<button
 						key={f}
 						className={colours.follows === f ? "on" : ""}
-						onMouseEnter={e => explain(what, e.currentTarget)}
+						onMouseEnter={e => explain(tr(`${presetId}.follows.${f}.hint`, what), e.currentTarget)}
 						onMouseLeave={unexplain}
-						onFocus={e => explain(what, e.currentTarget)}
+						onFocus={e => explain(tr(`${presetId}.follows.${f}.hint`, what), e.currentTarget)}
 						onBlur={unexplain}
 						onClick={() => set({ follows: f })}
 					>
-						{name}
+						{tr(`${presetId}.follows.${f}`, name)}
 					</button>
 				))}
 			</div>
 			<div
 				className="vivy-tune-knob"
-				onMouseEnter={e => explain("Each part of a song has its own key, and the colours lean round the wheel with it. Zero keeps them exactly as they are. Double-click the name to reset.", e.currentTarget)}
+				onMouseEnter={e => explain(t("colour.harmony.hint"), e.currentTarget)}
 				onMouseLeave={unexplain}
 			>
 				<div className="vivy-tune-label" onDoubleClick={() => set({ harmony: 1 })}>
-					<span>the song's key turns the hue</span>
+					<span>{t("colour.harmony")}</span>
 					<span>{colours.harmony.toFixed(2)}</span>
 				</div>
 				<input type="range" min={0} max={1} step={0.01} value={colours.harmony} onChange={e => set({ harmony: Number(e.target.value) })} />
@@ -264,15 +254,15 @@ export function PictureSection({ explain, unexplain }: Explain) {
 	const refresh = () => redraw(n => n + 1);
 	return (
 		<>
-			{PICTURE_KNOBS.map(([key, name, what]) => (
+			{PICTURE_KNOBS.map(key => (
 				<div
 					key={key}
 					className="vivy-tune-knob"
-					onMouseEnter={e => explain(`${what} Applies to every preset. Double-click the name to reset.`, e.currentTarget)}
+					onMouseEnter={e => explain(`${t(`picture.${key}.hint`)} ${t("picture.foot")}`, e.currentTarget)}
 					onMouseLeave={unexplain}
 				>
 					<div className="vivy-tune-label" onDoubleClick={() => (setPicture({ [key]: PICTURE_DEFAULTS[key] }), refresh())}>
-						<span>{name}</span>
+						<span>{t(`picture.${key}`)}</span>
 						<span>{currentPicture()[key].toFixed(2)}</span>
 					</div>
 					<input type="range" min={PICTURE_RANGE[key][0]} max={PICTURE_RANGE[key][1]} step={0.01} value={currentPicture()[key]} onChange={e => (setPicture({ [key]: Number(e.target.value) }), refresh())} />
@@ -280,7 +270,7 @@ export function PictureSection({ explain, unexplain }: Explain) {
 			))}
 			<div className="vivy-seg">
 				<button disabled={isDefaultPicture()} onClick={() => (setPicture(PICTURE_DEFAULTS), refresh())}>
-					Reset picture
+					{t("picture.reset")}
 				</button>
 			</div>
 		</>
@@ -294,8 +284,8 @@ export function LyricsSection({ explain, unexplain }: Explain) {
 	const lyrics = behindLyrics();
 	return (
 		<>
-			<div className="vivy-tune-note">{BEHIND_LYRICS_HINT}</div>
-			<div className="vivy-tune-sub">behind the lyrics</div>
+			<div className="vivy-tune-note">{t("lyrics.note")}</div>
+			<div className="vivy-tune-sub">{t("lyrics.title")}</div>
 			<div className="vivy-seg">
 				{[null, ...PRESETS].map(p => (
 					<button
@@ -303,17 +293,17 @@ export function LyricsSection({ explain, unexplain }: Explain) {
 						className={(p ? lyrics.on && lyrics.preset === p.id : !lyrics.on) ? "on" : ""}
 						onClick={() => (setBehindLyrics(p ? { on: true, preset: p.id } : { on: false }), refresh())}
 					>
-						{p?.name ?? "Off"}
+						{p?.name ?? t("lyrics.off")}
 					</button>
 				))}
 			</div>
 			<div
 				className="vivy-tune-knob"
-				onMouseEnter={e => explain("How dark the picture behind the lyrics is, so the words stay readable. Double-click the name to reset.", e.currentTarget)}
+				onMouseEnter={e => explain(t("lyrics.dim.hint"), e.currentTarget)}
 				onMouseLeave={unexplain}
 			>
 				<div className="vivy-tune-label" onDoubleClick={() => (setBehindLyrics({ dim: BEHIND_LYRICS_DEFAULTS.dim }), refresh())}>
-					<span>darkness</span>
+					<span>{t("lyrics.dim")}</span>
 					<span>{lyrics.dim.toFixed(2)}</span>
 				</div>
 				<input type="range" min={0} max={0.9} step={0.01} value={lyrics.dim} onChange={e => (setBehindLyrics({ dim: Number(e.target.value) }), refresh())} />

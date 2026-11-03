@@ -1,6 +1,7 @@
 import { loadTrackAudioData, loadTrackAudioFeatures, trackDataFromFeatures, TrackAudioData } from "./audio-data";
 import { coverHues, hexToRgb, Rgb } from "./colours";
 import { dumpAnalysis, report, warnIfNoHits } from "./dev";
+import { t } from "./i18n";
 
 export type Track = { name: string; artist: string; durationMs: number };
 
@@ -51,12 +52,12 @@ export function watchTrackData(onTrack: (track: Track | null) => void = () => {}
 					if (!stillHere()) return;
 					audio = trackDataFromFeatures(features);
 					report({ featuresFallback: item.name, tempo: features.tempo, loudness: features.loudness });
-					notify(`No analysis for "${item.name}" - using its tempo (${Math.round(features.tempo)} BPM). No section dynamics.`);
+					notify(t("notice.tempoOnly", { track: item.name, bpm: Math.round(features.tempo) }));
 				})
 				.catch(featureErr => {
 					if (!alive) return;
 					report({ noAnalysis: item.name, why, features: String(featureErr?.message ?? featureErr) });
-					notify(`No audio analysis for "${item.name}" - the picture follows a plain pulse.`);
+					notify(t("notice.noAnalysis", { track: item.name }));
 				});
 		};
 

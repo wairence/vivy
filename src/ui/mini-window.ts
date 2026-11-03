@@ -3,6 +3,7 @@
 // It has no frame in this client, so it is moved by a drag region and sized with resizeTo, the way
 // Spotify's own miniplayer is.
 
+import { t } from "./text";
 import { refreshPicture } from "./picture";
 
 export const IDLE_HIDE_MS = 2500;
@@ -60,7 +61,7 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 	const open = () => {
 		const api = (window as unknown as { documentPictureInPicture?: DocumentPip }).documentPictureInPicture;
 		if (!api) {
-			Spicetify.showNotification("This Spotify build has no picture-in-picture window", true);
+			Spicetify.showNotification(t("pip.unsupported"), true);
 			return;
 		}
 		let place: { w: number; h: number; x: number; y: number } | null = null;
@@ -95,7 +96,7 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 				// the whole picture is the drag handle, except a rim: a drag region at the border takes its resize grip
 				const handle = doc.createElement("div");
 				handle.style.cssText = "position:fixed;inset:10px;-webkit-app-region:drag;app-region:drag;cursor:grab";
-				handle.title = "Drag to move. Wheel, + and - resize. Esc closes.";
+				handle.title = t("pip.drag");
 				doc.body.append(handle);
 
 				const scaleBy = (factor: number) => sizeTo(opened, opened.innerWidth * factor, opened.innerHeight * factor);
@@ -146,9 +147,9 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 				};
 				for (const sign of ["mousemove", "mousedown", "wheel", "keydown", "focus"]) opened.addEventListener(sign, wake, true);
 				doc.documentElement.addEventListener("mouseenter", wake);
-				button("M6 6l12 12M18 6L6 18", 8, "Close (Esc)", () => opened.close());
-				button("M12 5v14M5 12h14", 42, "Bigger (+ or wheel up)", () => scaleBy(1.25));
-				button("M5 12h14", 76, "Smaller (- or wheel down)", () => scaleBy(0.8));
+				button("M6 6l12 12M18 6L6 18", 8, t("pip.close"), () => opened.close());
+				button("M12 5v14M5 12h14", 42, t("pip.bigger"), () => scaleBy(1.25));
+				button("M5 12h14", 76, t("pip.smaller"), () => scaleBy(0.8));
 				wake();
 
 				// its own keys; everything else goes to the visualizer as if typed there
@@ -166,7 +167,7 @@ export function createMiniWindow(canvas: HTMLCanvasElement, hooks: Hooks) {
 				opened.addEventListener("pagehide", comeBack, { once: true });
 				hooks.onMove(true);
 			})
-			.catch(err => Spicetify.showNotification(`Picture-in-picture: ${String(err?.message ?? err)}`, true));
+			.catch(err => Spicetify.showNotification(t("pip.failed", { error: String(err?.message ?? err) }), true));
 	};
 
 	return {
